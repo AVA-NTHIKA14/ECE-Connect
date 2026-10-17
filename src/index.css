@@ -4,69 +4,136 @@
 
 @layer base {
   * {
-    border-color: rgba(255, 255, 255, 0.12);
+    border-color: #E2E8F0;
   }
   
-  body {
-    background-color: #000000;
-    color: #FAFAFA;
-    font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  html, body {
+    background-color: #FAF9F6;
+    color: #102A56;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
 
-  /* Custom subtle scrollbar */
+  /* Standardized Typography Scale */
+  h1 {
+    font-size: clamp(2rem, 4vw, 2.5rem); /* 32px to 40px */
+    font-weight: 800;
+    line-height: 1.15;
+    letter-spacing: -0.025em;
+    color: #102A56;
+  }
+
+  h2 {
+    font-size: clamp(1.4rem, 2.5vw, 1.75rem); /* 22px to 28px */
+    font-weight: 700;
+    line-height: 1.25;
+    letter-spacing: -0.02em;
+    color: #102A56;
+  }
+
+  h3 {
+    font-size: clamp(1.125rem, 1.8vw, 1.25rem); /* 18px to 20px */
+    font-weight: 700;
+    line-height: 1.35;
+    letter-spacing: -0.015em;
+    color: #102A56;
+  }
+
+  p, .body-text {
+    font-size: 0.9375rem; /* 15px */
+    line-height: 1.6;
+    color: #334155; /* Slate 700 */
+  }
+
+  @media (min-width: 640px) {
+    p, .body-text {
+      font-size: 1rem; /* 16px */
+    }
+  }
+
+  .meta-text {
+    font-size: 0.8125rem; /* 13px */
+    line-height: 1.4;
+    color: #64748B; /* Slate 500 */
+  }
+
+  @media (min-width: 640px) {
+    .meta-text {
+      font-size: 0.875rem; /* 14px */
+    }
+  }
+
+  /* Custom clean subtle scrollbar */
   ::-webkit-scrollbar {
     width: 6px;
     height: 6px;
   }
   ::-webkit-scrollbar-track {
-    background: #080808;
+    background: #F1F5F9;
   }
   ::-webkit-scrollbar-thumb {
-    background: #2a2a2a;
-    border-radius: 3px;
+    background: #CBD5E1;
+    border-radius: 4px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: #444444;
+    background: #94A3B8;
   }
 }
 
-/* Subtle grid overlay */
-.bg-grid-pattern {
+/* Subtle, authentic noticeboard background pattern */
+.bg-noticeboard-pattern {
   background-size: 32px 32px;
   background-image: 
-    linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+    linear-gradient(to right, rgba(16, 42, 86, 0.03) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(16, 42, 86, 0.03) 1px, transparent 1px);
 }
 
-.bg-dot-pattern {
-  background-size: 24px 24px;
-  background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px);
+/* Elegant Physical Paper Card */
+.noticeboard-card {
+  background-color: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 1rem;
+  box-shadow: 0 1px 3px 0 rgba(16, 42, 86, 0.05), 0 1px 2px -1px rgba(16, 42, 86, 0.05);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  position: relative;
 }
 
-/* Glassmorphism Monochrome */
-.glass-panel {
-  background: rgba(10, 10, 10, 0.75);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+.noticeboard-card:hover {
+  transform: translateY(-2px);
+  border-color: #CBD5E1;
+  box-shadow: 0 10px 20px -4px rgba(16, 42, 86, 0.08), 0 4px 6px -2px rgba(16, 42, 86, 0.03);
 }
 
-.glass-panel-elevated {
-  background: rgba(18, 18, 18, 0.85);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.8), 0 0 25px rgba(255, 255, 255, 0.05);
+/* Tasteful pin accent at card top */
+.pin-accent::before {
+  content: "";
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #087F8C 0%, #06555E 100%);
+  box-shadow: 0 2px 4px rgba(16, 42, 86, 0.25);
+  pointer-events: none;
+  z-index: 10;
 }
 
-/* Zero-G elevation hover effect */
-.zero-g-hover {
-  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.25s ease;
-}
-
-.zero-g-hover:hover {
-  transform: translateY(-4px);
-  border-color: rgba(255, 255, 255, 0.3);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.9), 0 0 20px rgba(255, 255, 255, 0.08);
+/* Official Closed Token / Stamp Effect */
+.closed-stamp {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed #DC2626;
+  color: #DC2626;
+  background-color: #FEF2F2;
+  padding: 3px 10px;
+  border-radius: 6px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 11px;
+  transform: rotate(-3deg);
+  box-shadow: 0 1px 3px rgba(220, 38, 38, 0.15);
 }

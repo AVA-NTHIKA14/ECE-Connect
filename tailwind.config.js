@@ -8,51 +8,51 @@ export default {
   theme: {
     extend: {
       colors: {
-        dark: {
-          950: '#000000',
-          900: '#060606',
-          850: '#0B0B0B',
-          800: '#121212',
-          750: '#181818',
-          700: '#222222',
-          600: '#333333',
-          500: '#555555',
-          400: '#888888',
-          300: '#AAAAAA',
-          200: '#D4D4D4',
-          100: '#EEEEEE',
-          50: '#FAFAFA',
+        navy: {
+          950: '#0A1B38',
+          900: '#102A56', // Primary brand & heading color
+          800: '#183B75',
+          700: '#2353A1',
+          600: '#316DC5',
+          100: '#E8EFF9',
+          50: '#F2F6FC',
+        },
+        teal: {
+          900: '#03343A',
+          800: '#06636E',
+          700: '#07717D',
+          600: '#087F8C', // Primary interactive accent
+          500: '#0AA5B6',
+          400: '#26BCD0',
+          100: '#D5F4F7',
+          50: '#EAF8FA',
+        },
+        board: {
+          bg: '#FAF9F6', // Page background
+          card: '#FFFFFF',
+          surface: '#F8FAFC',
+          border: '#E2E8F0',
+          muted: '#64748B',
         }
+      },
+      fontSize: {
+        'page-heading': ['2.375rem', { lineHeight: '1.15', letterSpacing: '-0.025em', fontWeight: '800' }], // ~38px
+        'section-heading': ['1.625rem', { lineHeight: '1.25', letterSpacing: '-0.02em', fontWeight: '700' }], // 26px
+        'card-title': ['1.1875rem', { lineHeight: '1.35', letterSpacing: '-0.015em', fontWeight: '700' }], // 19px
+        'body-base': ['1rem', { lineHeight: '1.6' }], // 16px
+        'body-small': ['0.9375rem', { lineHeight: '1.55' }], // 15px
+        'meta': ['0.875rem', { lineHeight: '1.4' }], // 14px
+        'meta-sub': ['0.8125rem', { lineHeight: '1.4' }], // 13px
+        'tag': ['0.75rem', { lineHeight: '1', fontWeight: '600' }], // 12px
       },
       fontFamily: {
-        sans: ['"Inter"', 'ui-sans-serif', 'system-ui', '-apple-system', 'sans-serif'],
+        sans: ['"Inter"', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', 'sans-serif'],
         mono: ['"JetBrains Mono"', '"Space Mono"', 'monospace'],
-        display: ['"Inter"', 'ui-sans-serif', 'system-ui', 'sans-serif'],
       },
       boxShadow: {
-        'glow-sm': '0 0 15px rgba(255, 255, 255, 0.05)',
-        'glow-md': '0 0 25px rgba(255, 255, 255, 0.08)',
-        'glow-lg': '0 0 40px rgba(255, 255, 255, 0.12)',
-        'inner-glow': 'inset 0 0 15px rgba(255, 255, 255, 0.04)',
-      },
-      animation: {
-        'float-slow': 'floating 6s ease-in-out infinite',
-        'pulse-subtle': 'pulseSubtle 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-        'radar-sweep': 'radarSweep 4s linear infinite',
-      },
-      keyframes: {
-        floating: {
-          '0%, 100%': { transform: 'translateY(0px)' },
-          '50%': { transform: 'translateY(-6px)' },
-        },
-        pulseSubtle: {
-          '0%, 100%': { opacity: '1' },
-          '50%': { opacity: '0.4' },
-        },
-        radarSweep: {
-          '0%': { transform: 'rotate(0deg)' },
-          '100%': { transform: 'rotate(360deg)' },
-        }
+        'paper': '0 1px 3px 0 rgba(16, 42, 86, 0.05), 0 1px 2px -1px rgba(16, 42, 86, 0.05)',
+        'paper-hover': '0 10px 20px -4px rgba(16, 42, 86, 0.08), 0 4px 6px -2px rgba(16, 42, 86, 0.03)',
+        'stamp': '0 0 0 2px currentColor',
       }
     },
   },

@@ -1,15 +1,13 @@
 import React from 'react';
 import {
-  Radio,
+  LayoutGrid,
   Lock,
-  Terminal,
   LogOut,
   LogIn,
-  Sliders,
-  ChevronDown,
-  User,
+  Archive,
+  FileText,
   ShieldCheck,
-  Sparkles
+  User
 } from 'lucide-react';
 import { DEPARTMENT_INFO } from '../data/mockData';
 
@@ -19,84 +17,100 @@ export default function Navigation({
   currentUser,
   onOpenAuth,
   onLogout,
-  publicIssuesCount,
-  confidentialCount
+  onOpenNewModal,
+  publicIssuesCount = 0,
+  confidentialCount = 0
 }) {
   const isRep = currentUser?.role === 'representative';
 
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-white/[0.08] bg-black/75 backdrop-blur-xl">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+    <header className="sticky top-0 z-40 w-full border-b border-slate-200 bg-white/95 backdrop-blur-md">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-2 sm:gap-4">
         
-        {/* Brand / Logo Lockup */}
+        {/* Brand / Department Logo Lockup */}
         <div
-          className="flex items-center gap-3.5 cursor-pointer group select-none"
+          className="flex items-center gap-2 sm:gap-3 cursor-pointer group select-none shrink-0"
           onClick={() => setActiveTab('public')}
-          title="ECE Connect — GEC Sreekrishnapuram"
+          title="ECE Connect — Government Engineering College Sreekrishnapuram Palakkad"
         >
-          <div className="w-9 h-9 rounded-xl bg-zinc-900 border border-white/15 p-1 flex items-center justify-center overflow-hidden transition-all duration-200 group-hover:border-white/35 group-hover:scale-[1.02] shadow-sm">
+          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-slate-50 border border-slate-200 p-1 flex items-center justify-center overflow-hidden transition-all duration-200 group-hover:border-teal-500 shadow-xs">
             <img
               src="/logo.png"
-              alt="ECE GEC PKD Logo"
-              className="w-full h-full object-contain filter invert brightness-125 contrast-125"
+              alt="GECP Logo"
+              className="w-full h-full object-contain"
             />
           </div>
-          <div className="flex flex-col">
-            <div className="flex items-center gap-2">
-              <span className="font-semibold text-[15px] tracking-tight text-white group-hover:text-zinc-200 transition-colors">
+          <div className="flex flex-col text-left">
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <span className="font-extrabold text-[15px] sm:text-[17px] tracking-tight text-navy-900 group-hover:text-teal-700 transition-colors whitespace-nowrap">
                 ECE Connect
               </span>
-              <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-white/[0.08] text-zinc-300 border border-white/[0.08] tracking-wide">
-                GECSKP
+              <span className="text-[10px] sm:text-[11px] font-bold px-1.5 sm:px-2 py-0.5 rounded-full bg-teal-50 text-teal-800 border border-teal-200 whitespace-nowrap">
+                GECP
               </span>
             </div>
-            <span className="text-[11px] text-zinc-400 hidden sm:block font-normal">
-              Dept. of Electronics & Communication Engineering
+            <span className="text-[12px] text-slate-500 hidden xl:block font-normal truncate max-w-[260px]">
+              {DEPARTMENT_INFO.department}
             </span>
           </div>
         </div>
 
-        {/* Central Segmented Pill Navigation */}
-        <nav className="flex items-center p-1 bg-zinc-900/70 border border-white/[0.08] rounded-full shadow-inner">
-          {/* Stream A: Public Community Wall */}
+        {/* Central Navigation Tabs (Desktop) */}
+        <nav className="hidden md:flex items-center p-1 bg-slate-100/90 border border-slate-200/90 rounded-full text-[13px] shrink-0">
+          {/* Community Complaint Wall */}
           <button
             onClick={() => setActiveTab('public')}
-            className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-medium transition-all duration-200 ${
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full font-semibold whitespace-nowrap transition-all duration-150 ${
               activeTab === 'public'
-                ? 'bg-white text-zinc-950 shadow-sm'
-                : 'text-zinc-400 hover:text-white hover:bg-white/[0.04]'
+                ? 'bg-white text-navy-900 shadow-sm'
+                : 'text-slate-600 hover:text-navy-900'
             }`}
           >
-            <Radio className="w-3.5 h-3.5" />
-            <span>Community Wall</span>
+            <LayoutGrid className="w-3.5 h-3.5 text-teal-600" />
+            <span>Complaint Wall</span>
             <span
-              className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+              className={`text-[11px] px-1.5 py-0.2 rounded-full font-mono ${
                 activeTab === 'public'
-                  ? 'bg-zinc-900 text-white'
-                  : 'bg-white/[0.08] text-zinc-400'
+                  ? 'bg-teal-50 text-teal-800'
+                  : 'bg-slate-200 text-slate-600'
               }`}
             >
               {publicIssuesCount}
             </span>
           </button>
 
-          {/* Stream B: Confidential Vault */}
+          {/* My Complaints */}
+          {currentUser && (
+            <button
+              onClick={() => setActiveTab('my_complaints')}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full font-semibold whitespace-nowrap transition-all duration-150 ${
+                activeTab === 'my_complaints'
+                  ? 'bg-white text-navy-900 shadow-sm'
+                  : 'text-slate-600 hover:text-navy-900'
+              }`}
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>My Complaints</span>
+            </button>
+          )}
+
+          {/* Confidential Vault */}
           <button
             onClick={() => setActiveTab('confidential')}
-            className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-medium transition-all duration-200 ${
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full font-semibold whitespace-nowrap transition-all duration-150 ${
               activeTab === 'confidential'
-                ? 'bg-white text-zinc-950 shadow-sm'
-                : 'text-zinc-400 hover:text-white hover:bg-white/[0.04]'
+                ? 'bg-white text-navy-900 shadow-sm'
+                : 'text-slate-600 hover:text-navy-900'
             }`}
           >
             <Lock className="w-3.5 h-3.5" />
             <span>Confidential Vault</span>
-            {currentUser && (
+            {currentUser && confidentialCount > 0 && (
               <span
-                className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                className={`text-[11px] px-1.5 py-0.2 rounded-full font-mono ${
                   activeTab === 'confidential'
-                    ? 'bg-zinc-900 text-white'
-                    : 'bg-white/[0.08] text-zinc-400'
+                    ? 'bg-navy-900 text-white'
+                    : 'bg-slate-200 text-slate-600'
                 }`}
               >
                 {confidentialCount}
@@ -104,65 +118,167 @@ export default function Navigation({
             )}
           </button>
 
-          {/* Stream C: Representative Operations Desk (Only if unlocked) */}
+          {/* Archive */}
+          <button
+            onClick={() => setActiveTab('archive')}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full font-semibold whitespace-nowrap transition-all duration-150 ${
+              activeTab === 'archive'
+                ? 'bg-white text-navy-900 shadow-sm'
+                : 'text-slate-600 hover:text-navy-900'
+            }`}
+          >
+            <Archive className="w-3.5 h-3.5" />
+            <span>Archive</span>
+          </button>
+
+          {/* Operations Desk (Rep only) */}
           {isRep && (
             <button
               onClick={() => setActiveTab('operations')}
-              className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-medium transition-all duration-200 ${
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full font-semibold whitespace-nowrap transition-all duration-150 ${
                 activeTab === 'operations'
-                  ? 'bg-white text-zinc-950 shadow-sm'
-                  : 'text-white bg-white/[0.08] hover:bg-white/[0.14]'
+                  ? 'bg-navy-900 text-white shadow-sm'
+                  : 'text-navy-900 hover:bg-slate-200'
               }`}
             >
-              <Terminal className="w-3.5 h-3.5" />
-              <span>Operations Desk</span>
-              <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+              <ShieldCheck className="w-3.5 h-3.5 text-teal-400" />
+              <span>Rep Desk</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-teal-500 animate-pulse" />
             </button>
           )}
         </nav>
 
         {/* User Account / Ingress */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1.5 sm:gap-2.5">
           {currentUser ? (
-            <div className="flex items-center gap-2.5">
-              {/* User Identity Pill */}
+            <div className="flex items-center gap-1.5 sm:gap-3">
+              {/* User Identity */}
               <div className="hidden sm:flex flex-col text-right">
-                <div className="text-xs font-medium text-white flex items-center justify-end gap-1.5">
+                <div className="text-[14px] font-bold text-navy-900 flex items-center justify-end gap-1">
                   {currentUser.role === 'representative' && (
-                    <ShieldCheck className="w-3.5 h-3.5 text-zinc-300" />
+                    <ShieldCheck className="w-4 h-4 text-teal-600" />
                   )}
-                  {currentUser.name}
+                  {currentUser.displayName || currentUser.rollNumber}
                 </div>
-                <div className="text-[10px] text-zinc-400 font-mono">
-                  {currentUser.rollNumber} • {currentUser.role === 'representative' ? 'Official Rep' : currentUser.batch}
+                <div className="text-[12px] text-slate-500 font-mono">
+                  {currentUser.role === 'representative' ? 'Official Representative' : currentUser.email}
                 </div>
               </div>
 
               {/* Status Badge */}
-              <div className="px-2.5 py-1 rounded-full bg-zinc-900 border border-white/[0.1] text-[11px] font-mono text-zinc-300">
-                {currentUser.role === 'representative' ? 'REP' : currentUser.rollNumber}
+              <div
+                className={`px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-[11px] font-mono font-bold whitespace-nowrap ${
+                  currentUser.role === 'representative'
+                    ? 'bg-navy-900 text-white'
+                    : 'bg-teal-50 border border-teal-200 text-teal-900'
+                }`}
+              >
+                {currentUser.role === 'representative' ? (
+                  'REP'
+                ) : (
+                  <span>
+                    {currentUser.semester ? `${currentUser.semester} • ` : ''}
+                    {currentUser.rollNumber}
+                  </span>
+                )}
               </div>
 
-              {/* Logout Button */}
+              {/* Explicit Sign Out Button */}
               <button
                 onClick={onLogout}
-                title="Sign out of institutional session"
-                className="w-8 h-8 rounded-full flex items-center justify-center bg-white/[0.05] hover:bg-white/[0.12] border border-white/[0.08] text-zinc-400 hover:text-white transition-colors"
-                aria-label="Logout"
+                aria-label="Sign out of institutional session"
+                className="inline-flex items-center justify-center gap-1 sm:gap-1.5 h-8 sm:h-9 px-2 sm:px-3.5 rounded-full bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-700 hover:text-navy-900 text-[11px] sm:text-[13px] font-semibold tracking-normal shadow-2xs hover:shadow-xs transition-all duration-150 active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#087F8C] focus-visible:outline-none whitespace-nowrap shrink-0"
               >
-                <LogOut className="w-3.5 h-3.5" />
+                <LogOut className="w-3.5 h-3.5 text-slate-600 shrink-0" aria-hidden="true" />
+                <span className="hidden xs:inline sm:inline">Sign Out</span>
               </button>
             </div>
           ) : (
             <button
               onClick={onOpenAuth}
-              className="flex items-center gap-2 px-4 py-2 rounded-full bg-white text-zinc-950 hover:bg-zinc-200 text-xs font-medium transition-all shadow-sm"
+              aria-label="Sign In to ECE Connect"
+              className="group inline-flex items-center justify-center gap-1.5 sm:gap-2 h-9 sm:h-10 px-3.5 sm:px-5 rounded-full bg-[#087F8C] hover:bg-[#06636E] text-white text-[13px] sm:text-[14px] font-semibold tracking-normal shadow-xs hover:shadow transition-all duration-150 active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#087F8C] focus-visible:outline-none whitespace-nowrap shrink-0"
             >
-              <LogIn className="w-3.5 h-3.5" />
-              <span>Sign In with GECSKP</span>
+              <LogIn className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white group-hover:translate-x-0.5 transition-transform duration-150" aria-hidden="true" />
+              <span>Sign In</span>
             </button>
           )}
         </div>
+      </div>
+
+      {/* Mobile Sub-Navigation Bar with Lucide Icons */}
+      <div className="flex md:hidden overflow-x-auto border-t border-slate-200 px-2 py-1.5 gap-1.5 bg-slate-50 text-[12px] no-scrollbar">
+        <button
+          onClick={() => setActiveTab('public')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg whitespace-nowrap font-semibold transition-all ${
+            activeTab === 'public'
+              ? 'bg-white text-navy-900 shadow-xs border border-slate-200'
+              : 'text-slate-600 hover:text-navy-900'
+          }`}
+        >
+          <LayoutGrid className="w-3.5 h-3.5 text-teal-600" />
+          <span>Complaint Wall</span>
+          <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-slate-200 text-slate-700 font-mono">
+            {publicIssuesCount}
+          </span>
+        </button>
+
+        {currentUser && (
+          <button
+            onClick={() => setActiveTab('my_complaints')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg whitespace-nowrap font-semibold transition-all ${
+              activeTab === 'my_complaints'
+                ? 'bg-white text-navy-900 shadow-xs border border-slate-200'
+                : 'text-slate-600 hover:text-navy-900'
+            }`}
+          >
+            <FileText className="w-3.5 h-3.5" />
+            <span>My Complaints</span>
+          </button>
+        )}
+
+        <button
+          onClick={() => setActiveTab('confidential')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg whitespace-nowrap font-semibold transition-all ${
+            activeTab === 'confidential'
+              ? 'bg-white text-navy-900 shadow-xs border border-slate-200'
+              : 'text-slate-600 hover:text-navy-900'
+          }`}
+        >
+          <Lock className="w-3.5 h-3.5" />
+          <span>Confidential Vault</span>
+          {currentUser && confidentialCount > 0 && (
+            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-navy-900 text-white font-mono">
+              {confidentialCount}
+            </span>
+          )}
+        </button>
+
+        <button
+          onClick={() => setActiveTab('archive')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg whitespace-nowrap font-semibold transition-all ${
+            activeTab === 'archive'
+              ? 'bg-white text-navy-900 shadow-xs border border-slate-200'
+              : 'text-slate-600 hover:text-navy-900'
+          }`}
+        >
+          <Archive className="w-3.5 h-3.5" />
+          <span>Archive</span>
+        </button>
+
+        {isRep && (
+          <button
+            onClick={() => setActiveTab('operations')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg whitespace-nowrap font-semibold transition-all ${
+              activeTab === 'operations'
+                ? 'bg-navy-900 text-white shadow-xs'
+                : 'text-navy-900 hover:bg-slate-200'
+            }`}
+          >
+            <ShieldCheck className="w-3.5 h-3.5 text-teal-400" />
+            <span>Rep Desk</span>
+          </button>
+        )}
       </div>
     </header>
   );

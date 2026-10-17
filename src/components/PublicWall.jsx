@@ -2,46 +2,44 @@ import React, { useState } from 'react';
 import {
   Search,
   Plus,
-  Radio,
-  SlidersHorizontal,
-  Flame,
+  LayoutGrid,
   Clock,
-  Layers,
-  AlertCircle,
   Building2,
   CheckCircle2,
-  Filter,
-  X
+  X,
+  Loader2,
+  Inbox
 } from 'lucide-react';
 import IssueCard from './IssueCard';
+import IssueDetailsModal from './IssueDetailsModal';
+import { DEPARTMENT_INFO } from '../data/mockData';
 
 export default function PublicWall({
-  issues,
+  issues = [],
+  isLoading = false,
+  error = null,
   currentUser,
+  userVotes = {},
   onUpvote,
-  onAddComment,
   onOpenNewModal,
-  onOpenRepTriage
+  onOpenRepTriage,
+  onOpenAuth
 }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [stageFilter, setStageFilter] = useState('all');
-  const [sortBy, setSortBy] = useState('upvotes'); // 'upvotes' | 'recent' | 'urgency'
+  const [sortBy, setSortBy] = useState('recent'); // 'recent' | 'upvotes' | 'urgency'
+  const [selectedIssueForModal, setSelectedIssueForModal] = useState(null);
 
-  // Filtering
+  // Filtering (Active public issues only)
   const filteredIssues = issues.filter((issue) => {
     const matchesSearch =
-      issue.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      issue.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      issue.lab.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (issue.equipmentCode &&
-        issue.equipmentCode.toLowerCase().includes(searchTerm.toLowerCase()));
+      issue.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      issue.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      issue.lab?.toLowerCase().includes(searchTerm.toLowerCase());
 
-    const matchesCategory =
-      categoryFilter === 'all' || issue.category === categoryFilter;
-
-    const matchesStage =
-      stageFilter === 'all' || issue.stage === stageFilter;
+    const matchesCategory = categoryFilter === 'all' || issue.category === categoryFilter;
+    const matchesStage = stageFilter === 'all' || issue.stage === stageFilter;
 
     return matchesSearch && matchesCategory && matchesStage;
   });
@@ -49,114 +47,123 @@ export default function PublicWall({
   // Sorting
   const sortedIssues = [...filteredIssues].sort((a, b) => {
     if (sortBy === 'upvotes') {
-      return b.upvotes - a.upvotes;
+      return (b.upvotesCount || 0) - (a.upvotesCount || 0);
     }
     if (sortBy === 'recent') {
-      return new Date(b.reportedAt) - new Date(a.reportedAt);
+      return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
     }
     if (sortBy === 'urgency') {
-      const urgencyRank = { critical: 3, elevated: 2, normal: 1 };
-      return (urgencyRank[b.urgency] || 0) - (urgencyRank[a.urgency] || 0);
+      const rank = { critical: 3, elevated: 2, normal: 1 };
+      return (rank[b.urgency] || 0) - (rank[a.urgency] || 0);
     }
     return 0;
   });
 
-  // Analytics
-  const totalUpvotes = issues.reduce((acc, curr) => acc + curr.upvotes, 0);
-  const activeCount = issues.filter((i) => i.stage !== 'resolved').length;
-  const resolvedCount = issues.filter((i) => i.stage === 'resolved').length;
+  // Accurate Live Metrics from persisted issues
+  const totalUpvotes = issues.reduce((acc, curr) => acc + (curr.upvotesCount || 0), 0);
+  const activeCount = issues.filter((i) => i.stage !== 'resolved' && !i.isClosed).length;
+  const resolvedCount = issues.filter((i) => i.stage === 'resolved' || i.isClosed).length;
 
   return (
-    <div className="space-y-7 text-left">
-      {/* Sleek Hero & Metric Dashboard Header */}
-      <div className="bg-[#0D0D10] border border-white/[0.08] rounded-2xl p-6 sm:p-8 shadow-sm">
+    <div className="space-y-6 text-left">
+      {/* Complaint Wall Header Card */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 shadow-sm">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-          <div className="space-y-2 max-w-2xl">
-            <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full bg-white/[0.06] border border-white/[0.08] text-xs font-medium text-zinc-300">
-              <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
-              <span>GECSKP ECE Department Grievance System</span>
+          <div className="space-y-3 max-w-2xl">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-teal-50 border border-teal-200 text-[13px] font-semibold text-teal-800">
+              <span className="w-2 h-2 rounded-full bg-teal-600" />
+              <span>GECP ECE Department Complaint Wall</span>
             </div>
-            <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-white">
-              Department Community Wall
+
+            {/* Desktop Main Heading: 36-44px */}
+            <h1 className="text-3xl sm:text-[38px] font-extrabold tracking-tight text-navy-900 leading-tight">
+              ECE Complaint Wall
             </h1>
-            <p className="text-sm text-zinc-400 font-normal leading-relaxed">
-              Transparent, student-driven triage for laboratory equipment, classroom AV systems, and KTU academic timetable coordination. Click <span className="text-white font-medium">+1 Affects Me</span> to escalate shared departmental priorities.
+
+            {/* Body Text: 15-16px */}
+            <p className="text-[15px] sm:text-[16px] text-slate-700 leading-relaxed font-normal">
+              A transparent, student-driven grievance wall for issues affecting laboratories, classroom facilities, and academic scheduling at {DEPARTMENT_INFO.institution}. Support shared concerns with <span className="font-semibold text-teal-700">+1 Affects Me</span> to escalate priorities to department representatives and faculty.
             </p>
           </div>
 
           {/* Primary Action Button */}
-          <div className="shrink-0">
+          <div className="w-full sm:w-auto shrink-0">
             <button
               onClick={onOpenNewModal}
-              className="px-5 py-3 rounded-xl bg-white hover:bg-zinc-200 text-zinc-950 font-medium text-xs flex items-center justify-center gap-2 shadow-sm transition-all duration-150 hover:scale-[1.02] active:scale-[0.98]"
+              aria-label="Raise new department concern on the Complaint Wall"
+              className="w-full sm:w-auto px-5 py-3 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-semibold text-[15px] flex items-center justify-center gap-2 shadow-sm transition-all duration-150 hover:shadow-md focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-teal-600 focus-visible:outline-none active:scale-[0.99]"
             >
-              <Plus className="w-4 h-4 stroke-[2.5]" />
-              <span>Report Department Issue</span>
+              <Plus className="w-4 h-4 stroke-[2.5]" aria-hidden="true" />
+              <span>Raise Department Concern</span>
             </button>
           </div>
         </div>
 
-        {/* Linear-Style KPI Metric Cards */}
-        <div className="mt-8 pt-6 border-t border-white/[0.08] grid grid-cols-2 sm:grid-cols-4 gap-3.5">
-          <div className="p-4 rounded-xl bg-black/40 border border-white/[0.05]">
-            <div className="text-xs text-zinc-500 font-medium">Total Issues Logged</div>
-            <div className="text-2xl font-semibold text-white tracking-tight mt-1 font-mono">
-              {issues.length}
+        {/* Cohesive Stats Overview Bar */}
+        <div className="mt-8 pt-6 border-t border-slate-200 grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+          <div className="p-3.5 sm:p-4 rounded-xl bg-slate-50 border border-slate-200/80">
+            <div className="text-[12px] sm:text-[13px] text-slate-500 font-medium">Active Concerns</div>
+            <div className="text-2xl sm:text-[26px] font-bold text-navy-900 tracking-tight mt-1 font-mono">
+              {isLoading ? '...' : issues.length}
             </div>
           </div>
-          <div className="p-4 rounded-xl bg-black/40 border border-white/[0.05]">
-            <div className="text-xs text-zinc-500 font-medium">Active In Pipeline</div>
-            <div className="text-2xl font-semibold text-white tracking-tight mt-1 font-mono flex items-center gap-2">
-              <span>{activeCount}</span>
-              <span className="text-[10px] text-zinc-400 font-normal px-2 py-0.5 rounded-full bg-white/[0.06]">
-                Pending
+          <div className="p-3.5 sm:p-4 rounded-xl bg-slate-50 border border-slate-200/80">
+            <div className="text-[12px] sm:text-[13px] text-slate-500 font-medium">In Resolution</div>
+            <div className="text-2xl sm:text-[26px] font-bold text-teal-700 tracking-tight mt-1 font-mono flex items-center gap-2">
+              <span>{isLoading ? '...' : activeCount}</span>
+              <span className="text-[10px] sm:text-[11px] text-teal-800 font-semibold px-2 py-0.5 rounded-full bg-teal-100 font-sans">
+                Active
               </span>
             </div>
           </div>
-          <div className="p-4 rounded-xl bg-black/40 border border-white/[0.05]">
-            <div className="text-xs text-zinc-500 font-medium">Verified Resolved</div>
-            <div className="text-2xl font-semibold text-white tracking-tight mt-1 font-mono">
-              {resolvedCount}
+          <div className="p-3.5 sm:p-4 rounded-xl bg-slate-50 border border-slate-200/80">
+            <div className="text-[12px] sm:text-[13px] text-slate-500 font-medium">Verified Resolved</div>
+            <div className="text-2xl sm:text-[26px] font-bold text-navy-900 tracking-tight mt-1 font-mono">
+              {isLoading ? '...' : resolvedCount}
             </div>
           </div>
-          <div className="p-4 rounded-xl bg-black/40 border border-white/[0.05]">
-            <div className="text-xs text-zinc-500 font-medium">Collective +1 Weight</div>
-            <div className="text-2xl font-semibold text-white tracking-tight mt-1 font-mono">
-              {totalUpvotes}
+          <div className="p-3.5 sm:p-4 rounded-xl bg-slate-50 border border-slate-200/80">
+            <div className="text-[12px] sm:text-[13px] text-slate-500 font-medium">Student Upvotes</div>
+            <div className="text-2xl sm:text-[26px] font-bold text-navy-900 tracking-tight mt-1 font-mono">
+              {isLoading ? '...' : totalUpvotes}
             </div>
           </div>
         </div>
       </div>
 
-      {/* Modern Filter & Search Controls */}
-      <div className="bg-[#0D0D10] border border-white/[0.08] rounded-xl p-3.5 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+      {/* Filter, Search & Sort Bar */}
+      <div className="bg-white border border-slate-200 rounded-xl p-3.5 sm:p-4 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 shadow-sm">
         {/* Search Bar */}
         <div className="relative flex-1">
-          <Search className="w-4 h-4 text-zinc-500 absolute left-3.5 top-3" />
+          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" aria-hidden="true" />
           <input
+            id="search-issues"
             type="text"
+            aria-label="Search grievances by room, topic, or problem description"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search by hardware tag, lab room, or issue description..."
-            className="w-full bg-black/50 border border-white/[0.08] focus:border-white/30 rounded-lg pl-9 pr-8 py-2 text-xs text-white placeholder-zinc-500 outline-none transition-colors"
+            placeholder="Search by classroom, lab room, or problem description..."
+            className="w-full bg-slate-50 border border-slate-200 focus:bg-white focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20 rounded-lg pl-9 pr-8 py-2 text-[14px] text-navy-900 placeholder-slate-400 outline-none transition-colors"
           />
           {searchTerm && (
             <button
               onClick={() => setSearchTerm('')}
-              className="absolute right-3 top-2.5 text-zinc-500 hover:text-white"
+              aria-label="Clear search input"
+              className="absolute right-3 top-2.5 text-slate-400 hover:text-navy-900 p-1 rounded focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:outline-none"
             >
-              <X className="w-3.5 h-3.5" />
+              <X className="w-3.5 h-3.5" aria-hidden="true" />
             </button>
           )}
         </div>
 
         {/* Filter Dropdowns */}
-        <div className="flex flex-wrap items-center gap-2 text-xs">
+        <div className="grid grid-cols-1 sm:grid-cols-3 md:flex md:flex-wrap items-center gap-2">
           {/* Category Filter */}
           <select
+            aria-label="Filter issues by department category"
             value={categoryFilter}
             onChange={(e) => setCategoryFilter(e.target.value)}
-            className="bg-black/50 border border-white/[0.08] rounded-lg px-3 py-2 text-zinc-300 outline-none hover:border-white/20 focus:border-white/40 cursor-pointer"
+            className="w-full md:w-auto bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-[13px] font-medium text-slate-700 outline-none hover:border-slate-300 focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20 cursor-pointer"
           >
             <option value="all">All Categories</option>
             <option value="lab">Laboratories</option>
@@ -167,9 +174,10 @@ export default function PublicWall({
 
           {/* Stage Filter */}
           <select
+            aria-label="Filter issues by resolution stage"
             value={stageFilter}
             onChange={(e) => setStageFilter(e.target.value)}
-            className="bg-black/50 border border-white/[0.08] rounded-lg px-3 py-2 text-zinc-300 outline-none hover:border-white/20 focus:border-white/40 cursor-pointer"
+            className="w-full md:w-auto bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-[13px] font-medium text-slate-700 outline-none hover:border-slate-300 focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20 cursor-pointer"
           >
             <option value="all">All Stages</option>
             <option value="reported">Reported</option>
@@ -180,51 +188,92 @@ export default function PublicWall({
 
           {/* Sort Filter */}
           <select
+            aria-label="Sort department issues"
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value)}
-            className="bg-black/50 border border-white/[0.08] rounded-lg px-3 py-2 text-zinc-300 outline-none hover:border-white/20 focus:border-white/40 cursor-pointer"
+            className="w-full md:w-auto bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-[13px] font-medium text-slate-700 outline-none hover:border-slate-300 focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20 cursor-pointer"
           >
+            <option value="recent">Sort: Most Recent</option>
             <option value="upvotes">Sort: Most +1 Affects Me</option>
             <option value="urgency">Sort: Highest Urgency</option>
-            <option value="recent">Sort: Most Recent</option>
           </select>
         </div>
       </div>
 
-      {/* Grid of Issue Cards */}
-      {sortedIssues.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {sortedIssues.map((issue) => (
-            <IssueCard
-              key={issue.id}
-              issue={issue}
-              currentUser={currentUser}
-              onUpvote={onUpvote}
-              onAddComment={onAddComment}
-              onOpenRepTriage={onOpenRepTriage}
-            />
-          ))}
+      {/* Loading State */}
+      {isLoading && (
+        <div className="p-12 text-center bg-white border border-slate-200 rounded-2xl space-y-3">
+          <Loader2 className="w-8 h-8 text-teal-600 animate-spin mx-auto" />
+          <div className="text-[16px] font-semibold text-navy-900">Loading Community Complaint Wall...</div>
+          <p className="text-[14px] text-slate-500">Retrieving live grievances from Cloud Firestore</p>
         </div>
-      ) : (
-        <div className="bg-[#0D0D10] border border-white/[0.08] rounded-2xl p-12 text-center space-y-3">
-          <Radio className="w-8 h-8 text-zinc-600 mx-auto" />
-          <h4 className="text-sm font-semibold text-white">
-            No Department Issues Found
-          </h4>
-          <p className="text-xs text-zinc-500 max-w-sm mx-auto font-normal">
-            No active issues match the selected category or search filters.
-          </p>
-          <button
-            onClick={() => {
-              setSearchTerm('');
-              setCategoryFilter('all');
-              setStageFilter('all');
-            }}
-            className="px-4 py-2 rounded-lg bg-white/[0.08] hover:bg-white/[0.14] text-xs text-white transition-colors"
-          >
-            Clear Filters
-          </button>
+      )}
+
+      {/* Cloud Sync Advisory Banner */}
+      {!isLoading && error && (
+        <div className="p-4 sm:p-5 bg-amber-50 border border-amber-200 rounded-2xl text-amber-900 text-[14px] flex items-start gap-3 shadow-2xs animate-fadeIn">
+          <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+          <div className="space-y-1 text-left">
+            <div className="font-bold text-[14px] text-amber-950">
+              Firestore Cloud Sync Notice: {error.message || 'Missing permissions'}
+            </div>
+            <p className="text-[13px] text-amber-800 leading-relaxed font-normal">
+              Showing grievances from your local session. To enable live cloud synchronization across all student devices, publish the rules in your <strong>Firebase Console &gt; Firestore Database &gt; Rules</strong> tab.
+            </p>
+          </div>
         </div>
+      )}
+
+      {/* Grid of Pinned Cards: 2 Columns on Desktop, 1 on Mobile */}
+      {!isLoading && (
+        sortedIssues.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {sortedIssues.map((issue) => (
+              <IssueCard
+                key={issue.id}
+                issue={issue}
+                currentUser={currentUser}
+                hasUpvoted={Boolean(userVotes[issue.id])}
+                onUpvote={onUpvote}
+                onSelectIssue={(clickedIssue) => setSelectedIssueForModal(clickedIssue)}
+                onOpenRepTriage={onOpenRepTriage}
+              />
+            ))}
+          </div>
+        ) : (
+          /* Genuine Empty State */
+          <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center space-y-3 shadow-sm">
+            <Inbox className="w-10 h-10 text-slate-300 mx-auto" />
+            <h4 className="text-[18px] font-bold text-navy-900">
+              No issues reported yet. Be the first to raise a concern.
+            </h4>
+            <p className="text-[15px] text-slate-600 max-w-md mx-auto font-normal leading-relaxed">
+              The ECE Community Complaint Wall is live and transparent. Raise any issues affecting laboratory equipment, lecture hall projectors, or timetable clashes.
+            </p>
+            <div className="pt-2">
+              <button
+                onClick={onOpenNewModal}
+                className="px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-semibold text-[14px] inline-flex items-center gap-2 shadow-sm transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Raise First Concern</span>
+              </button>
+            </div>
+          </div>
+        )
+      )}
+
+      {/* Detailed Modal View */}
+      {selectedIssueForModal && (
+        <IssueDetailsModal
+          isOpen={Boolean(selectedIssueForModal)}
+          issue={selectedIssueForModal}
+          currentUser={currentUser}
+          hasUpvoted={Boolean(userVotes[selectedIssueForModal.id])}
+          onClose={() => setSelectedIssueForModal(null)}
+          onUpvote={onUpvote}
+          onOpenAuth={onOpenAuth}
+        />
       )}
     </div>
   );

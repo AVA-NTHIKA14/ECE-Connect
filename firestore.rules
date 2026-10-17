@@ -1,0 +1,117 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isInstitutionalUser() {
+      return isAuthenticated() && 
+        request.auth.token.email != null && 
+        request.auth.token.email.matches('^.*@gecskp\\.ac\\.in$');
+    }
+
+    function isEmailVerified() {
+      return isAuthenticated() && 
+        (request.auth.token.email_verified == true || request.auth.token.firebase.sign_in_provider == 'password');
+    }
+
+    function isRepresentative() {
+      return isAuthenticated() && (
+        request.auth.token.role == 'representative' ||
+        (exists(/databases/$(database)/documents/roles/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/roles/$(request.auth.uid)).data.role == 'representative')
+      );
+    }
+
+    function isOwner(authorUid) {
+      return isAuthenticated() && request.auth.uid == authorUid;
+    }
+
+    // Role registry: Managed exclusively by administrative process / Firebase Console
+    match /roles/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if false; // Only manageable through Firebase Admin SDK or Console
+    }
+
+    // User profiles
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated() && request.auth.uid == userId;
+      allow delete: if false;
+    }
+
+    // Public Community Wall Issues
+    match /public_issues/{issueId} {
+      // Anyone can read public issues on the community complaint wall
+      allow read: if true;
+
+      // Verified students can report a public issue
+      allow create: if isInstitutionalUser() &&
+        request.resource.data.authorUid == request.auth.uid &&
+        request.resource.data.stage == 'reported' &&
+        request.resource.data.isClosed == false;
+
+      // Status, stage, and closure updates are restricted to authorized representatives.
+      // Complainants can only update details if not closed and only specific non-status fields.
+      allow update: if isRepresentative() || (
+        isOwner(resource.data.authorUid) &&
+        resource.data.isClosed == false &&
+        request.resource.data.stage == resource.data.stage &&
+        request.resource.data.isClosed == resource.data.isClosed
+      );
+
+      // Prevent accidental or malicious permanent deletion
+      allow delete: if false;
+
+      // Subcollection: Votes (+1 Affects Me)
+      // Anyone can read vote counts; voting requires institutional authentication
+      match /votes/{userId} {
+        allow read: if true;
+        allow create, delete: if isInstitutionalUser() && request.auth.uid == userId;
+        allow update: if false;
+      }
+
+      // Subcollection: Comments / Community Observations
+      // Anyone can read comments; posting requires institutional authentication
+      match /comments/{commentId} {
+        allow read: if true;
+        allow create: if isInstitutionalUser() && 
+          request.resource.data.authorUid == request.auth.uid;
+        allow update, delete: if isRepresentative() || 
+          (isAuthenticated() && resource.data.authorUid == request.auth.uid);
+      }
+    }
+
+    // Confidential Grievances (Private Vault)
+    match /private_grievances/{grievanceId} {
+      // Strictly restricted to the complaint owner or verified representatives
+      allow read: if isRepresentative() || isOwner(resource.data.authorUid);
+
+      // Verified students can create their own private grievances
+      allow create: if isInstitutionalUser() &&
+        request.resource.data.authorUid == request.auth.uid;
+
+      // Updates restricted to the owner (if not closed) or authorized representative
+      allow update: if isRepresentative() || (
+        isOwner(resource.data.authorUid) && 
+        resource.data.isClosed == false &&
+        request.resource.data.stage == resource.data.stage
+      );
+
+      allow delete: if false;
+
+      // Subcollection: 2-Way Private Messages
+      match /messages/{messageId} {
+        allow read: if isRepresentative() || 
+          isOwner(get(/databases/$(database)/documents/private_grievances/$(grievanceId)).data.authorUid);
+        allow create: if (isRepresentative() || 
+          isOwner(get(/databases/$(database)/documents/private_grievances/$(grievanceId)).data.authorUid)) &&
+          request.resource.data.senderUid == request.auth.uid;
+        allow update, delete: if false;
+      }
+    }
+  }
+}

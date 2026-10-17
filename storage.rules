@@ -1,0 +1,35 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isInstitutional() {
+      return isAuthenticated() && 
+        request.auth.token.email.matches('^.*@gecskp\\.ac\\.in$');
+    }
+
+    function isRepresentative() {
+      return isAuthenticated() && request.auth.token.role == 'representative';
+    }
+
+    // Public attachments (e.g. photos of broken lab equipment)
+    match /public_attachments/{issueId}/{fileName} {
+      allow read: if isAuthenticated();
+      allow write: if isInstitutional() && 
+        request.resource.size < 10 * 1024 * 1024 &&
+        request.resource.contentType.matches('image/.*|application/pdf');
+    }
+
+    // Confidential Grievance attachments (medical certificates, mark sheets)
+    // Strictly restricted to the owner's UID directory or representative
+    match /private_attachments/{userId}/{grievanceId}/{fileName} {
+      allow read: if isRepresentative() || (isAuthenticated() && request.auth.uid == userId);
+      allow write: if isAuthenticated() && request.auth.uid == userId &&
+        request.resource.size < 10 * 1024 * 1024 &&
+        request.resource.contentType.matches('image/.*|application/pdf');
+    }
+  }
+}

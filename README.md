@@ -1,64 +1,74 @@
-# ECE-Connect
+# ECE Connect — Student Grievance & Facility Portal
 
-> Student Grievance & Facility Portal for the Department of Electronics & Communication Engineering, Government Engineering College Sreekrishnapuram (GECSKP), Palakkad.
-
-## Overview
-**ECE Connect** is a responsive web application built for the Department of ECE at GEC Sreekrishnapuram. It streamlines departmental facility issues, laboratory equipment maintenance, and sensitive student welfare concerns through a secure, dual-stream grievance tracking architecture.
+> Department of Electronics & Communication Engineering  
+> Government Engineering College Sreekrishnapuram Palakkad (GECP), Kerala
 
 ---
 
-## Key Features
+## Overview
 
-### 1. Visual & Aesthetic Architecture
-- **Monochrome Dark Theme**: Built with an obsidian dark theme (`#09090B`), elevated cards (`#0D0D10`), and delicate hairlines (`border-white/[0.08]`).
-- **Official Department Emblem**: Displays the official GEC PKD ECE hexagonal PCB circuit logo.
-- **Typography**: Clean, geometric **Inter** for all UI copy and headings, paired with JetBrains Mono for KTU roll numbers and hardware asset tags.
-- **Ambient Zero-G Particles**: Canvas background with subtle orbital dust particles reacting gently to mouse movement.
+**ECE Connect** is a responsive web application engineered for the Department of Electronics & Communication Engineering at **Government Engineering College Sreekrishnapuram Palakkad (GECP)**. It provides a transparent, accountable platform for addressing departmental facility maintenance, laboratory equipment upkeep, and sensitive student academic/welfare matters through a dual-stream architecture.
 
-### 2. Institutional Authentication & Role Architecture
-- **Regex Validation**: Client-side enforcement of GECSKP email format (`/^pkd\d{2}ec\d{3}@gecskp\.ac\.in$/i`) or pre-whitelisted staff emails (`ece.rep@gecskp.ac.in`).
-- **External Domain Rejection**: Automatically blocks external providers (`@gmail.com`, `@yahoo.com`) with an institutional protocol alert.
-- **Unified Login**: Zero-clutter login modal without public "Admin" or "Staff" toggles. Roles are resolved seamlessly upon authentication.
+---
 
-### 3. Dual-Stream Grievance Mechanism
-- **Stream A: Public Community Wall**
-  - Department-wide visibility for issues across VLSI, Communication, DSP, and Microcontroller labs, classroom AV, and KTU timetables.
-  - **"+1 Affects Me"** collective upvoting counter.
-  - **4-Stage Connected Milestone Stepper**: `Reported` → `Acknowledged` → `In Progress` → `Resolved`.
-  - Full search, category filtering, and student discussion comments.
-- **Stream B: Private Confidential Vault**
-  - Encrypted 1-on-1 counseling space between students and the ECE Association Representative.
-  - **6-Digit Anonymous Vault Key** generator for anonymous submissions.
-  - Direct key retrieval to resume ongoing threads from any terminal.
-  - Real-time 2-way chat with document attachment simulations.
+## Core Capabilities
 
-### 4. Representative Operations Desk
-- Unlocked automatically for `ece.rep@gecskp.ac.in`.
-- Real-time triage metrics (Active, Critical, Resolved, Confidential, 24.8h Turnaround).
-- Status progression controller and formal **Department Requisition Indent Generator** (`IND-GECSKP-XXXX`).
-- Confidential response console for direct replies to student welfare requests.
+### 1. Dual-Stream Grievance Mechanism
 
-### 5. Reviewer Demo Dock
-- Floating pill in the bottom-right corner allowing 1-click toggling between:
-  - Standard Student: `pkd22ec045@gecskp.ac.in`
-  - Junior Student: `pkd23ec012@gecskp.ac.in`
-  - Representative Desk: `ece.rep@gecskp.ac.in`
-  - Guest Mode
+- **Stream A: Public Community Complaint Wall**
+  - Transparent tracking for issues affecting department classrooms and laboratories:
+    - *EC 1st Year Class*, *2nd Year EC Class*, *3rd Year EC Class*, *4th Year Class*
+    - *Analog Circuit Lab*, *Advanced Communication Lab*, *Basic Electronics Lab*, *Digital Circuits Lab*
+  - **"+1 Affects Me"** collective student upvoting to elevate priorities for urgent breakdowns.
+  - **4-Stage Milestone Stepper**: `Reported` → `Acknowledged` → `In Progress` → `Resolved`.
+  - Filter by category (Laboratory, Classroom AV, Department Facility, KTU Academics) and stage.
+  - Threaded community observations and comments for peer updates.
+
+- **Stream B: Confidential Welfare Vault**
+  - Dedicated, non-public advisory channel between authenticated students and the authorized ECE Department Representative.
+  - Verified complainant identification (Student Name, KTU Roll Number, Batch Semester, Institutional Email) enables direct verification of attendance records, medical condonation documents, and re-totaling requests.
+  - End-to-end 2-way real-time message stream for direct representative guidance.
+
+### 2. Representative Operations Desk
+
+- Protected administrative console available strictly to the verified Department Representative (`ece.rep@gecskp.ac.in`).
+- Real-time grievance triage queue with quick stage updates and resolution logging.
+- Official **CLOSED** audit stamp with resolution notes, moving verified cases to the permanent **Resolved Archive**.
+- Department requisition indent generator (`IND-GECP-XXXX`) for lab equipment repairs and faculty coordination.
+- Dedicated responses panel to reply to confidential student welfare inquiries.
+
+### 3. Institutional Authentication & Security
+
+- Institutional email format validation strictly restricted to active student batches:
+  - **S7 (Final Year)**: `pkd23ec001`–`pkd23ec075@gecskp.ac.in`
+  - **S5 (Third Year)**: `pkd24ec001`–`pkd24ec075@gecskp.ac.in`
+  - **S3 (Second Year)**: `pkd25ec001`–`pkd25ec075@gecskp.ac.in`
+  - **S1 (First Year)**: `pkd26ec001`–`pkd26ec075@gecskp.ac.in`
+- External email domains (`@gmail.com`, `@yahoo.com`) are automatically rejected.
+- Firebase Authentication with email verification and Cloud Firestore real-time persistence.
+
+### 4. Design & Usability
+
+- **Authentic Noticeboard Aesthetic**: Clean, light physical paper theme with pin accents, KTU branding, and clear visual hierarchy.
+- **Universal Responsiveness**: Adaptive layouts optimized across mobile phones (320px–430px), tablets (768px–1024px), laptops, and desktop monitors.
+- **Lucide Iconography**: Clear, consistent Lucide React icons across all views with zero AI-generated emojis.
 
 ---
 
 ## Tech Stack
-- **Framework**: React 18
-- **Bundler**: Vite 6
+
+- **Framework**: React 18 + Vite 6
 - **Styling**: Tailwind CSS
 - **Icons**: Lucide React
+- **Backend / Database**: Google Firebase (Authentication & Cloud Firestore)
+- **Deployment**: Node.js / Vite Static Build
 
 ---
 
 ## Getting Started
 
 ```bash
-# Clone repository
+# Clone the repository
 git clone https://github.com/AVA-NTHIKA14/ECE-Connect.git
 
 # Enter project directory
@@ -76,7 +86,9 @@ npm run build
 
 ---
 
-## Department & Institutional Details
-- **Institution**: Government Engineering College Sreekrishnapuram (GECSKP), Palakkad, Kerala
-- **Department**: Electronics & Communication Engineering
+## Institutional Metadata
+
+- **Institution**: Government Engineering College Sreekrishnapuram Palakkad (GECP)
+- **Department**: Department of Electronics & Communication Engineering
 - **Affiliation**: APJ Abdul Kalam Technological University (KTU)
+- **Location**: Palakkad, Kerala 679513
