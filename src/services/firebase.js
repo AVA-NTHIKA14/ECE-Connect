@@ -12,12 +12,12 @@ const cleanVal = (val) => {
 };
 
 const firebaseConfig = {
-  apiKey: cleanVal(env.VITE_FIREBASE_API_KEY),
-  authDomain: cleanVal(env.VITE_FIREBASE_AUTH_DOMAIN),
-  projectId: cleanVal(env.VITE_FIREBASE_PROJECT_ID),
-  storageBucket: cleanVal(env.VITE_FIREBASE_STORAGE_BUCKET),
-  messagingSenderId: cleanVal(env.VITE_FIREBASE_MESSAGING_SENDER_ID),
-  appId: cleanVal(env.VITE_FIREBASE_APP_ID)
+  apiKey: cleanVal(env.VITE_FIREBASE_API_KEY) || "AIzaSyBDaOTi4TPUvZtjN1HQbB3uP_Nhyjjt0Jg",
+  authDomain: cleanVal(env.VITE_FIREBASE_AUTH_DOMAIN) || "ece-connect-fcb2d.firebaseapp.com",
+  projectId: cleanVal(env.VITE_FIREBASE_PROJECT_ID) || "ece-connect-fcb2d",
+  storageBucket: cleanVal(env.VITE_FIREBASE_STORAGE_BUCKET) || "ece-connect-fcb2d.firebasestorage.app",
+  messagingSenderId: cleanVal(env.VITE_FIREBASE_MESSAGING_SENDER_ID) || "1064993589865",
+  appId: cleanVal(env.VITE_FIREBASE_APP_ID) || "1:1064993589865:web:058105ea394fcea66870f8"
 };
 
 // Check if valid Firebase configuration has been provided
