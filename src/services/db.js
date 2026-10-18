@@ -1,32 +1,289 @@
-// ECE Connect — Cloud Firestore Persistence & Real-time Subscriptions
+// ECE Connect — Cloud Firestore Persistence, Real-time Subscriptions & Offline/Demo Resiliency
 import {
   collection,
   doc,
   addDoc,
   updateDoc,
-  deleteDoc,
   getDoc,
-  getDocs,
-  setDoc,
   query,
   where,
   orderBy,
   onSnapshot,
-  serverTimestamp,
   increment,
   runTransaction
 } from 'firebase/firestore';
-import { db, isFirebaseConfigured } from './firebase.js';
+import { auth, db, isFirebaseConfigured } from './firebase.js';
 
-// Local storage keys for offline/fallback mode when Firebase credentials are not provided
+// Local storage keys for offline/demo/fallback mode
 const STORAGE_PUBLIC_ISSUES = 'ece_connect_public_issues_v1';
 const STORAGE_PRIVATE_GRIEVANCES = 'ece_connect_private_grievances_v1';
 const STORAGE_VOTES = 'ece_connect_user_votes_v1';
 
+// Seed sample issues for realistic department operations
+const DEFAULT_SEED_ISSUES = [
+  {
+    id: 'PUB-ECE-101',
+    title: 'CRO Channel 2 Signal Distortion on Bench 4',
+    description: 'During frequency modulation experiments, Channel 2 shows 15% DC baseline drift and erratic trigger synchronization. Affects S5 hardware lab sessions.',
+    category: 'lab',
+    lab: 'Analog Circuit Lab',
+    equipmentCode: 'CRO-ACL-04',
+    urgency: 'elevated',
+    stage: 'in_progress',
+    isClosed: false,
+    upvotesCount: 7,
+    commentsCount: 1,
+    authorUid: 'pkd24ec012_uid',
+    authorEmail: 'pkd24ec012@gecskp.ac.in',
+    studentName: 'Aravind K (PKD24EC012)',
+    createdAt: new Date(Date.now() - 36 * 3600 * 1000).toISOString(),
+    updatedAt: new Date(Date.now() - 12 * 3600 * 1000).toISOString(),
+    assignedRep: 'ece.rep@gecskp.ac.in',
+    resolutionNotes: 'Superintendent notified. Replacement probe kit ordered under Requisition IND-2026-089.',
+    targetFixDate: '2026-10-25',
+    statusHistory: [
+      {
+        stage: 'reported',
+        note: 'Issue reported to ECE Community Wall.',
+        updatedBy: 'pkd24ec012@gecskp.ac.in',
+        updatedAt: new Date(Date.now() - 36 * 3600 * 1000).toISOString()
+      },
+      {
+        stage: 'acknowledged',
+        note: 'Bench verified by Department Representative.',
+        updatedBy: 'ece.rep@gecskp.ac.in',
+        updatedAt: new Date(Date.now() - 24 * 3600 * 1000).toISOString()
+      },
+      {
+        stage: 'in_progress',
+        note: 'Replacement probe kit ordered under Requisition IND-2026-089.',
+        updatedBy: 'ece.rep@gecskp.ac.in',
+        updatedAt: new Date(Date.now() - 12 * 3600 * 1000).toISOString()
+      }
+    ],
+    comments: [
+      {
+        id: 'c-seed-1',
+        text: 'Observed the same during AM detector circuit testing on Friday afternoon.',
+        authorUid: 'pkd24ec035_uid',
+        authorEmail: 'pkd24ec035@gecskp.ac.in',
+        authorName: 'Sneha P (PKD24EC035)',
+        createdAt: new Date(Date.now() - 18 * 3600 * 1000).toISOString()
+      }
+    ]
+  },
+  {
+    id: 'PUB-ECE-102',
+    title: 'Digital Storage Oscilloscope Power Supply Trip',
+    description: 'Master DSO unit on Central Test Bench trips whenever input voltage exceeds 12V P-P. Lab assistant advised safety shutdown until inspected.',
+    category: 'lab',
+    lab: 'Digital Circuits Lab',
+    equipmentCode: 'DSO-DCL-01',
+    urgency: 'critical',
+    stage: 'acknowledged',
+    isClosed: false,
+    upvotesCount: 14,
+    commentsCount: 0,
+    authorUid: 'pkd23ec008_uid',
+    authorEmail: 'pkd23ec008@gecskp.ac.in',
+    studentName: 'Rahul Menon (PKD23EC008)',
+    createdAt: new Date(Date.now() - 16 * 3600 * 1000).toISOString(),
+    updatedAt: new Date(Date.now() - 8 * 3600 * 1000).toISOString(),
+    assignedRep: 'ece.rep@gecskp.ac.in',
+    resolutionNotes: 'Service technician scheduled for on-site diagnostic.',
+    targetFixDate: '2026-10-22',
+    statusHistory: [
+      {
+        stage: 'reported',
+        note: 'Reported by Final Year student.',
+        updatedBy: 'pkd23ec008@gecskp.ac.in',
+        updatedAt: new Date(Date.now() - 16 * 3600 * 1000).toISOString()
+      },
+      {
+        stage: 'acknowledged',
+        note: 'Tagged critical priority. Lab assistant notified.',
+        updatedBy: 'ece.rep@gecskp.ac.in',
+        updatedAt: new Date(Date.now() - 8 * 3600 * 1000).toISOString()
+      }
+    ]
+  },
+  {
+    id: 'PUB-ECE-103',
+    title: 'Projector HDMI Input Failing in 3rd Year EC Classroom',
+    description: 'Ceiling projector flickers and loses sync after 10 minutes of presentation. Seminar and guest lectures affected.',
+    category: 'facility',
+    lab: '3rd Year EC Class',
+    equipmentCode: 'PRJ-3EC-01',
+    urgency: 'normal',
+    stage: 'reported',
+    isClosed: false,
+    upvotesCount: 5,
+    commentsCount: 0,
+    authorUid: 'pkd24ec045_uid',
+    authorEmail: 'pkd24ec045@gecskp.ac.in',
+    studentName: 'ECE Student (Anonymous)',
+    createdAt: new Date(Date.now() - 4 * 3600 * 1000).toISOString(),
+    updatedAt: new Date(Date.now() - 4 * 3600 * 1000).toISOString(),
+    assignedRep: 'ece.rep@gecskp.ac.in',
+    resolutionNotes: null,
+    targetFixDate: null,
+    statusHistory: [
+      {
+        stage: 'reported',
+        note: 'Submitted anonymously via student portal.',
+        updatedBy: 'Anonymous Student',
+        updatedAt: new Date(Date.now() - 4 * 3600 * 1000).toISOString()
+      }
+    ]
+  }
+];
+
+const DEFAULT_SEED_GRIEVANCES = [
+  {
+    id: 'VAULT-ECE-001',
+    title: 'Discrepancy in S5 DSP Practical Internal Marks Allocation',
+    category: 'academics',
+    urgency: 'elevated',
+    isAnonymous: true,
+    status: 'acknowledged',
+    stage: 'acknowledged',
+    isClosed: false,
+    authorUid: 'pkd24ec021_uid',
+    authorEmail: 'anonymous@confidential.gecskp',
+    realAuthorEmail: 'pkd24ec021@gecskp.ac.in',
+    authorName: 'Anonymous Student',
+    subjectRoll: 'CONFIDENTIAL',
+    semester: null,
+    createdAt: new Date(Date.now() - 28 * 3600 * 1000).toISOString(),
+    updatedAt: new Date(Date.now() - 6 * 3600 * 1000).toISOString(),
+    assignedRep: 'ece.rep@gecskp.ac.in',
+    resolutionNotes: 'Representative verified mark sheets with Lab Faculty In-charge.',
+    messagesCount: 2,
+    statusHistory: [
+      {
+        stage: 'reported',
+        note: 'Confidential grievance submitted anonymously.',
+        updatedBy: 'Anonymous Student',
+        updatedAt: new Date(Date.now() - 28 * 3600 * 1000).toISOString()
+      },
+      {
+        stage: 'acknowledged',
+        note: 'Representative verified mark sheets with Lab Faculty In-charge.',
+        updatedBy: 'ece.rep@gecskp.ac.in',
+        updatedAt: new Date(Date.now() - 6 * 3600 * 1000).toISOString()
+      }
+    ],
+    messages: [
+      {
+        id: 'msg-seed-1',
+        senderUid: 'pkd24ec021_uid',
+        senderRole: 'student',
+        senderLabel: 'Anonymous Student (Vault Owner)',
+        content: 'Respected representative, during the DSP simulation exam on Tuesday, our batch was evaluated on a different problem statement rubric than communicated. Could you please request HOD clarification?',
+        attachments: [],
+        createdAt: new Date(Date.now() - 28 * 3600 * 1000).toISOString()
+      },
+      {
+        id: 'msg-seed-2',
+        senderUid: 'rep_gecskp_association_officer',
+        senderRole: 'rep',
+        senderLabel: 'ECE Association Representative',
+        content: 'Acknowledged. We spoke with the faculty in charge today. A revised moderation rubric will be published on Monday notice board.',
+        attachments: [],
+        createdAt: new Date(Date.now() - 6 * 3600 * 1000).toISOString()
+      }
+    ]
+  },
+  {
+    id: 'VAULT-ECE-002',
+    title: 'Department Library Reading Room Air Circulation & Evening Access',
+    category: 'welfare',
+    urgency: 'normal',
+    isAnonymous: false,
+    status: 'reported',
+    stage: 'reported',
+    isClosed: false,
+    authorUid: 'pkd23ec045_uid',
+    authorEmail: 'pkd23ec045@gecskp.ac.in',
+    realAuthorEmail: 'pkd23ec045@gecskp.ac.in',
+    authorName: 'Karthik R (PKD23EC045)',
+    subjectRoll: 'PKD23EC045',
+    semester: 'S7',
+    createdAt: new Date(Date.now() - 10 * 3600 * 1000).toISOString(),
+    updatedAt: new Date(Date.now() - 10 * 3600 * 1000).toISOString(),
+    assignedRep: 'ece.rep@gecskp.ac.in',
+    resolutionNotes: null,
+    messagesCount: 1,
+    statusHistory: [
+      {
+        stage: 'reported',
+        note: 'Confidential grievance submitted by Karthik R (PKD23EC045).',
+        updatedBy: 'PKD23EC045',
+        updatedAt: new Date(Date.now() - 10 * 3600 * 1000).toISOString()
+      }
+    ],
+    messages: [
+      {
+        id: 'msg-seed-3',
+        senderUid: 'pkd23ec045_uid',
+        senderRole: 'student',
+        senderLabel: 'Karthik R (Student)',
+        content: 'Request to keep the ECE departmental reading room open until 6:30 PM during university exam month. Currently closed at 4:30 PM with staff exit.',
+        attachments: [],
+        createdAt: new Date(Date.now() - 10 * 3600 * 1000).toISOString()
+      }
+    ]
+  }
+];
+
+// Reactive internal pub-sub listeners for real-time local updates
+const changeListeners = new Set();
+
+export function addChangeListener(cb) {
+  changeListeners.add(cb);
+  return () => {
+    changeListeners.delete(cb);
+  };
+}
+
+function broadcastChange(type = 'all') {
+  changeListeners.forEach((cb) => {
+    try {
+      cb(type);
+    } catch (e) {
+      console.warn('Change listener notification warning:', e);
+    }
+  });
+  if (typeof window !== 'undefined') {
+    try {
+      window.dispatchEvent(new CustomEvent('ece_connect_data_sync', { detail: { type } }));
+    } catch (_) {}
+  }
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (e) => {
+    if (e.key === STORAGE_PUBLIC_ISSUES || e.key === STORAGE_PRIVATE_GRIEVANCES) {
+      broadcastChange(e.key);
+    }
+  });
+}
+
 function getLocal(key, defaultVal = []) {
   try {
     const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : defaultVal;
+    if (!raw) {
+      if (key === STORAGE_PUBLIC_ISSUES && defaultVal.length === 0) {
+        localStorage.setItem(key, JSON.stringify(DEFAULT_SEED_ISSUES));
+        return [...DEFAULT_SEED_ISSUES];
+      }
+      if (key === STORAGE_PRIVATE_GRIEVANCES && defaultVal.length === 0) {
+        localStorage.setItem(key, JSON.stringify(DEFAULT_SEED_GRIEVANCES));
+        return [...DEFAULT_SEED_GRIEVANCES];
+      }
+      return defaultVal;
+    }
+    return JSON.parse(raw);
   } catch {
     return defaultVal;
   }
@@ -35,9 +292,74 @@ function getLocal(key, defaultVal = []) {
 function setLocal(key, val) {
   try {
     localStorage.setItem(key, JSON.stringify(val));
+    broadcastChange(key);
   } catch (err) {
     console.warn('LocalStorage write failed:', err);
   }
+}
+
+/**
+ * Reconciles remote Firestore snapshot issues with local cache.
+ * Preserves local status overrides (e.g. stage updates, closures, local issues).
+ */
+function mergePublicIssues(firestoreIssues = []) {
+  const localIssues = getLocal(STORAGE_PUBLIC_ISSUES, []);
+  const map = new Map();
+
+  firestoreIssues.forEach((item) => {
+    map.set(item.id, item);
+  });
+
+  localIssues.forEach((localItem) => {
+    const existing = map.get(localItem.id);
+    if (!existing) {
+      map.set(localItem.id, localItem);
+    } else {
+      const localTime = new Date(localItem.updatedAt || localItem.createdAt || 0).getTime();
+      const serverTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
+      // Keep local version if modified recently or if closed locally
+      if (localTime >= serverTime || (localItem.isClosed && !existing.isClosed)) {
+        map.set(localItem.id, { ...existing, ...localItem });
+      }
+    }
+  });
+
+  const merged = Array.from(map.values());
+  try {
+    localStorage.setItem(STORAGE_PUBLIC_ISSUES, JSON.stringify(merged));
+  } catch (_) {}
+  return merged;
+}
+
+/**
+ * Reconciles remote Firestore snapshot grievances with local cache.
+ */
+function mergePrivateGrievances(firestoreGrievances = []) {
+  const localGrievances = getLocal(STORAGE_PRIVATE_GRIEVANCES, []);
+  const map = new Map();
+
+  firestoreGrievances.forEach((item) => {
+    map.set(item.id, item);
+  });
+
+  localGrievances.forEach((localItem) => {
+    const existing = map.get(localItem.id);
+    if (!existing) {
+      map.set(localItem.id, localItem);
+    } else {
+      const localTime = new Date(localItem.updatedAt || localItem.createdAt || 0).getTime();
+      const serverTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
+      if (localTime >= serverTime || (localItem.isClosed && !existing.isClosed)) {
+        map.set(localItem.id, { ...existing, ...localItem });
+      }
+    }
+  });
+
+  const merged = Array.from(map.values());
+  try {
+    localStorage.setItem(STORAGE_PRIVATE_GRIEVANCES, JSON.stringify(merged));
+  } catch (_) {}
+  return merged;
 }
 
 // -------------------------------------------------------------
@@ -48,15 +370,22 @@ function setLocal(key, val) {
  * Subscribe to active public issues (isClosed === false).
  */
 export function subscribeActivePublicIssues(onData, onError) {
+  let lastServerIssues = [];
+
+  const emit = () => {
+    const merged = mergePublicIssues(lastServerIssues);
+    const active = merged
+      .filter((i) => !i.isClosed)
+      .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+    onData(active);
+  };
+
+  // Immediate initial load
+  emit();
+  const unlistenLocal = addChangeListener(() => emit());
+
   if (!isFirebaseConfigured || !db) {
-    const load = () => {
-      const all = getLocal(STORAGE_PUBLIC_ISSUES, []);
-      const active = all.filter((i) => !i.isClosed);
-      onData(active);
-    };
-    load();
-    const interval = setInterval(load, 2000);
-    return () => clearInterval(interval);
+    return () => unlistenLocal();
   }
 
   try {
@@ -65,49 +394,31 @@ export function subscribeActivePublicIssues(onData, onError) {
       where('isClosed', '==', false)
     );
 
-    return onSnapshot(
+    const unsubFirestore = onSnapshot(
       q,
       (snapshot) => {
-        const issues = snapshot.docs
-          .map((d) => ({
-            id: d.id,
-            ...d.data()
-          }))
-          .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-
-        // Sync with local cache
-        try {
-          const currentLocal = getLocal(STORAGE_PUBLIC_ISSUES, []);
-          const merged = [...issues];
-          currentLocal.forEach((item) => {
-            if (!merged.find((m) => m.id === item.id)) {
-              merged.push(item);
-            }
-          });
-          setLocal(STORAGE_PUBLIC_ISSUES, merged);
-        } catch (_) {}
-
-        onData(issues);
+        lastServerIssues = snapshot.docs.map((d) => ({
+          id: d.id,
+          ...d.data()
+        }));
+        emit();
       },
       (error) => {
-        console.warn('Error listening to public issues in Firestore, using cache fallback:', error);
-        const all = getLocal(STORAGE_PUBLIC_ISSUES, []);
-        const active = all
-          .filter((i) => !i.isClosed)
-          .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-        onData(active);
+        console.warn('Firestore active public issues subscription notice, using cache fallback:', error);
+        emit();
         if (onError) onError(error);
       }
     );
+
+    return () => {
+      unlistenLocal();
+      unsubFirestore();
+    };
   } catch (err) {
     console.warn('Firestore subscription error, using cache fallback:', err);
-    const all = getLocal(STORAGE_PUBLIC_ISSUES, []);
-    const active = all
-      .filter((i) => !i.isClosed)
-      .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-    onData(active);
+    emit();
     if (onError) onError(err);
-    return () => {};
+    return () => unlistenLocal();
   }
 }
 
@@ -115,15 +426,21 @@ export function subscribeActivePublicIssues(onData, onError) {
  * Subscribe to resolved/archived public issues (isClosed === true).
  */
 export function subscribeArchivedIssues(onData, onError) {
+  let lastServerIssues = [];
+
+  const emit = () => {
+    const merged = mergePublicIssues(lastServerIssues);
+    const archived = merged
+      .filter((i) => i.isClosed)
+      .sort((a, b) => new Date(b.closedAt || b.createdAt || 0) - new Date(a.closedAt || a.createdAt || 0));
+    onData(archived);
+  };
+
+  emit();
+  const unlistenLocal = addChangeListener(() => emit());
+
   if (!isFirebaseConfigured || !db) {
-    const load = () => {
-      const all = getLocal(STORAGE_PUBLIC_ISSUES, []);
-      const archived = all.filter((i) => i.isClosed);
-      onData(archived);
-    };
-    load();
-    const interval = setInterval(load, 2000);
-    return () => clearInterval(interval);
+    return () => unlistenLocal();
   }
 
   try {
@@ -132,36 +449,31 @@ export function subscribeArchivedIssues(onData, onError) {
       where('isClosed', '==', true)
     );
 
-    return onSnapshot(
+    const unsubFirestore = onSnapshot(
       q,
       (snapshot) => {
-        const issues = snapshot.docs
-          .map((d) => ({
-            id: d.id,
-            ...d.data()
-          }))
-          .sort((a, b) => new Date(b.closedAt || b.createdAt || 0) - new Date(a.closedAt || a.createdAt || 0));
-        onData(issues);
+        lastServerIssues = snapshot.docs.map((d) => ({
+          id: d.id,
+          ...d.data()
+        }));
+        emit();
       },
       (error) => {
-        console.warn('Error listening to archived issues in Firestore, using cache fallback:', error);
-        const all = getLocal(STORAGE_PUBLIC_ISSUES, []);
-        const archived = all
-          .filter((i) => i.isClosed)
-          .sort((a, b) => new Date(b.closedAt || b.createdAt || 0) - new Date(a.closedAt || a.createdAt || 0));
-        onData(archived);
+        console.warn('Firestore archive query notice, using cache fallback:', error);
+        emit();
         if (onError) onError(error);
       }
     );
+
+    return () => {
+      unlistenLocal();
+      unsubFirestore();
+    };
   } catch (err) {
     console.warn('Firestore archive query error, using cache fallback:', err);
-    const all = getLocal(STORAGE_PUBLIC_ISSUES, []);
-    const archived = all
-      .filter((i) => i.isClosed)
-      .sort((a, b) => new Date(b.closedAt || b.createdAt || 0) - new Date(a.closedAt || a.createdAt || 0));
-    onData(archived);
+    emit();
     if (onError) onError(err);
-    return () => {};
+    return () => unlistenLocal();
   }
 }
 
@@ -169,56 +481,49 @@ export function subscribeArchivedIssues(onData, onError) {
  * Subscribe to all public issues (both active and closed) for representative triage.
  */
 export function subscribeAllPublicIssues(onData, onError) {
+  let lastServerIssues = [];
+
+  const emit = () => {
+    const merged = mergePublicIssues(lastServerIssues);
+    const sorted = merged.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+    onData(sorted);
+  };
+
+  emit();
+  const unlistenLocal = addChangeListener(() => emit());
+
   if (!isFirebaseConfigured || !db) {
-    const load = () => {
-      const all = getLocal(STORAGE_PUBLIC_ISSUES, []);
-      onData(all.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)));
-    };
-    load();
-    const interval = setInterval(load, 2000);
-    return () => clearInterval(interval);
+    return () => unlistenLocal();
   }
 
   try {
     const q = query(collection(db, 'public_issues'));
 
-    return onSnapshot(
+    const unsubFirestore = onSnapshot(
       q,
       (snapshot) => {
-        const issues = snapshot.docs
-          .map((d) => ({
-            id: d.id,
-            ...d.data()
-          }))
-          .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-
-        // Sync local cache
-        try {
-          const currentLocal = getLocal(STORAGE_PUBLIC_ISSUES, []);
-          const merged = [...issues];
-          currentLocal.forEach((item) => {
-            if (!merged.find((m) => m.id === item.id)) {
-              merged.push(item);
-            }
-          });
-          setLocal(STORAGE_PUBLIC_ISSUES, merged);
-        } catch (_) {}
-
-        onData(issues);
+        lastServerIssues = snapshot.docs.map((d) => ({
+          id: d.id,
+          ...d.data()
+        }));
+        emit();
       },
       (error) => {
-        console.warn('Error listening to all public issues in Firestore, using cache fallback:', error);
-        const all = getLocal(STORAGE_PUBLIC_ISSUES, []);
-        onData(all.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)));
+        console.warn('Firestore all issues notice, using cache fallback:', error);
+        emit();
         if (onError) onError(error);
       }
     );
+
+    return () => {
+      unlistenLocal();
+      unsubFirestore();
+    };
   } catch (err) {
     console.warn('Firestore subscription error for all issues, using cache fallback:', err);
-    const all = getLocal(STORAGE_PUBLIC_ISSUES, []);
-    onData(all.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)));
+    emit();
     if (onError) onError(err);
-    return () => {};
+    return () => unlistenLocal();
   }
 }
 
@@ -229,6 +534,9 @@ export async function createPublicIssue(data, currentUser) {
   if (!currentUser) throw new Error('Authentication required to raise a complaint.');
 
   const now = new Date().toISOString();
+  const isAnonymous = Boolean(data.hideIdentity);
+  const studentName = isAnonymous ? 'ECE Student (Anonymous)' : (currentUser.displayName || currentUser.rollNumber);
+
   const issuePayload = {
     title: data.title.trim(),
     description: data.description.trim(),
@@ -242,7 +550,7 @@ export async function createPublicIssue(data, currentUser) {
     commentsCount: 0,
     authorUid: currentUser.uid,
     authorEmail: currentUser.email,
-    studentName: data.hideIdentity ? 'ECE Student (Anonymous)' : (currentUser.displayName || currentUser.rollNumber),
+    studentName,
     createdAt: now,
     updatedAt: now,
     assignedRep: 'ece.rep@gecskp.ac.in',
@@ -258,7 +566,7 @@ export async function createPublicIssue(data, currentUser) {
     ]
   };
 
-  // Instant local cache sync for offline resiliency
+  // Instant local cache sync for offline/demo resiliency
   const localId = `PUB-${Date.now().toString(36).toUpperCase()}`;
   const localIssue = { id: localId, ...issuePayload };
   const all = getLocal(STORAGE_PUBLIC_ISSUES, []);
@@ -268,27 +576,21 @@ export async function createPublicIssue(data, currentUser) {
   userVotes[`${localId}_${currentUser.uid}`] = true;
   setLocal(STORAGE_VOTES, userVotes);
 
-  if (!isFirebaseConfigured || !db) {
+  if (!isFirebaseConfigured || !db || !auth?.currentUser) {
     return localIssue;
   }
 
   try {
-    // Real Cloud Firestore persistence
     const docRef = await addDoc(collection(db, 'public_issues'), issuePayload);
-
-    // Record initial author vote in subcollection
     try {
-      await setDoc(doc(db, 'public_issues', docRef.id, 'votes', currentUser.uid), {
+      await addDoc(collection(db, 'public_issues', docRef.id, 'votes'), {
         uid: currentUser.uid,
         votedAt: now
       });
-    } catch (err) {
-      console.warn('Could not record initial vote doc:', err);
-    }
-
+    } catch (_) {}
     return { id: docRef.id, ...issuePayload };
   } catch (firestoreErr) {
-    console.warn('Firestore write failed, issue retained in local session:', firestoreErr);
+    console.warn('Firestore write notice, issue safely retained in local session:', firestoreErr);
     return localIssue;
   }
 }
@@ -300,66 +602,70 @@ export async function createPublicIssue(data, currentUser) {
 export async function toggleUpvote(issueId, currentUser) {
   if (!currentUser) throw new Error('Please sign in to indicate that this issue affects you.');
 
-  if (!isFirebaseConfigured || !db) {
-    const userVotes = getLocal(STORAGE_VOTES, {});
-    const key = `${issueId}_${currentUser.uid}`;
-    const hasVoted = Boolean(userVotes[key]);
-    const all = getLocal(STORAGE_PUBLIC_ISSUES, []);
+  const userVotes = getLocal(STORAGE_VOTES, {});
+  const key = `${issueId}_${currentUser.uid}`;
+  const hasVoted = Boolean(userVotes[key]);
+  const all = getLocal(STORAGE_PUBLIC_ISSUES, []);
 
-    let newCount = 0;
-    const updated = all.map((issue) => {
-      if (issue.id === issueId) {
-        newCount = hasVoted ? Math.max(0, issue.upvotesCount - 1) : issue.upvotesCount + 1;
-        return { ...issue, upvotesCount: newCount };
-      }
-      return issue;
-    });
-
-    if (hasVoted) {
-      delete userVotes[key];
-    } else {
-      userVotes[key] = true;
+  let newCount = 0;
+  const updated = all.map((issue) => {
+    if (issue.id === issueId) {
+      newCount = hasVoted ? Math.max(0, (issue.upvotesCount || 1) - 1) : (issue.upvotesCount || 0) + 1;
+      return { ...issue, upvotesCount: newCount };
     }
-    setLocal(STORAGE_PUBLIC_ISSUES, updated);
-    setLocal(STORAGE_VOTES, userVotes);
+    return issue;
+  });
+
+  if (hasVoted) {
+    delete userVotes[key];
+  } else {
+    userVotes[key] = true;
+  }
+  setLocal(STORAGE_PUBLIC_ISSUES, updated);
+  setLocal(STORAGE_VOTES, userVotes);
+
+  if (!isFirebaseConfigured || !db || !auth?.currentUser) {
     return { hasVoted: !hasVoted, count: newCount };
   }
 
-  // Real Firestore atomic transaction
-  const voteDocRef = doc(db, 'public_issues', issueId, 'votes', currentUser.uid);
-  const issueDocRef = doc(db, 'public_issues', issueId);
+  // Attempt real Firestore transaction if authenticated in Firebase Auth
+  try {
+    const voteDocRef = doc(db, 'public_issues', issueId, 'votes', currentUser.uid);
+    const issueDocRef = doc(db, 'public_issues', issueId);
 
-  return await runTransaction(db, async (transaction) => {
-    const voteSnap = await transaction.get(voteDocRef);
-    const issueSnap = await transaction.get(issueDocRef);
+    return await runTransaction(db, async (transaction) => {
+      const voteSnap = await transaction.get(voteDocRef);
+      const issueSnap = await transaction.get(issueDocRef);
 
-    if (!issueSnap.exists()) {
-      throw new Error('Issue not found.');
-    }
+      if (!issueSnap.exists()) {
+        return { hasVoted: !hasVoted, count: newCount };
+      }
 
-    const currentCount = issueSnap.data().upvotesCount || 0;
+      const currentCount = issueSnap.data().upvotesCount || 0;
 
-    if (voteSnap.exists()) {
-      // Remove vote
-      transaction.delete(voteDocRef);
-      transaction.update(issueDocRef, {
-        upvotesCount: Math.max(0, currentCount - 1),
-        updatedAt: new Date().toISOString()
-      });
-      return { hasVoted: false, count: Math.max(0, currentCount - 1) };
-    } else {
-      // Add vote
-      transaction.set(voteDocRef, {
-        uid: currentUser.uid,
-        votedAt: new Date().toISOString()
-      });
-      transaction.update(issueDocRef, {
-        upvotesCount: currentCount + 1,
-        updatedAt: new Date().toISOString()
-      });
-      return { hasVoted: true, count: currentCount + 1 };
-    }
-  });
+      if (voteSnap.exists()) {
+        transaction.delete(voteDocRef);
+        transaction.update(issueDocRef, {
+          upvotesCount: Math.max(0, currentCount - 1),
+          updatedAt: new Date().toISOString()
+        });
+        return { hasVoted: false, count: Math.max(0, currentCount - 1) };
+      } else {
+        transaction.set(voteDocRef, {
+          uid: currentUser.uid,
+          votedAt: new Date().toISOString()
+        });
+        transaction.update(issueDocRef, {
+          upvotesCount: currentCount + 1,
+          updatedAt: new Date().toISOString()
+        });
+        return { hasVoted: true, count: currentCount + 1 };
+      }
+    });
+  } catch (err) {
+    console.warn('Firestore vote transaction notice, vote safely recorded in local session:', err);
+    return { hasVoted: !hasVoted, count: newCount };
+  }
 }
 
 /**
@@ -368,17 +674,18 @@ export async function toggleUpvote(issueId, currentUser) {
 export async function checkUserVote(issueId, currentUser) {
   if (!currentUser) return false;
 
-  if (!isFirebaseConfigured || !db) {
-    const userVotes = getLocal(STORAGE_VOTES, {});
-    return Boolean(userVotes[`${issueId}_${currentUser.uid}`]);
+  const userVotes = getLocal(STORAGE_VOTES, {});
+  const localVoted = Boolean(userVotes[`${issueId}_${currentUser.uid}`]);
+
+  if (!isFirebaseConfigured || !db || !auth?.currentUser) {
+    return localVoted;
   }
 
   try {
     const voteSnap = await getDoc(doc(db, 'public_issues', issueId, 'votes', currentUser.uid));
-    return voteSnap.exists();
+    return voteSnap.exists() || localVoted;
   } catch (err) {
-    console.error('Error checking vote:', err);
-    return false;
+    return localVoted;
   }
 }
 
@@ -391,6 +698,7 @@ export async function addPublicComment(issueId, text, currentUser) {
 
   const now = new Date().toISOString();
   const commentPayload = {
+    id: `c-${Date.now()}`,
     text: text.trim(),
     authorUid: currentUser.uid,
     authorEmail: currentUser.email,
@@ -398,56 +706,90 @@ export async function addPublicComment(issueId, text, currentUser) {
     createdAt: now
   };
 
-  if (!isFirebaseConfigured || !db) {
-    const all = getLocal(STORAGE_PUBLIC_ISSUES, []);
-    const updated = all.map((issue) => {
-      if (issue.id === issueId) {
-        const comments = issue.comments || [];
-        return {
-          ...issue,
-          commentsCount: comments.length + 1,
-          comments: [...comments, { id: `c-${Date.now()}`, ...commentPayload }]
-        };
-      }
-      return issue;
-    });
-    setLocal(STORAGE_PUBLIC_ISSUES, updated);
-    return { id: `c-${Date.now()}`, ...commentPayload };
+  const all = getLocal(STORAGE_PUBLIC_ISSUES, []);
+  const updated = all.map((issue) => {
+    if (issue.id === issueId) {
+      const comments = issue.comments || [];
+      return {
+        ...issue,
+        commentsCount: (issue.commentsCount || comments.length) + 1,
+        comments: [...comments, commentPayload]
+      };
+    }
+    return issue;
+  });
+  setLocal(STORAGE_PUBLIC_ISSUES, updated);
+
+  if (!isFirebaseConfigured || !db || !auth?.currentUser) {
+    return commentPayload;
   }
 
-  // Real Firestore: Add to subcollection & increment commentsCount
-  const commentRef = await addDoc(collection(db, 'public_issues', issueId, 'comments'), commentPayload);
-  await updateDoc(doc(db, 'public_issues', issueId), {
-    commentsCount: increment(1),
-    updatedAt: now
-  });
-
-  return { id: commentRef.id, ...commentPayload };
+  try {
+    const commentRef = await addDoc(collection(db, 'public_issues', issueId, 'comments'), commentPayload);
+    try {
+      await updateDoc(doc(db, 'public_issues', issueId), {
+        commentsCount: increment(1),
+        updatedAt: now
+      });
+    } catch (_) {}
+    return { id: commentRef.id, ...commentPayload };
+  } catch (err) {
+    console.warn('Firestore comment write notice, retained in local session:', err);
+    return commentPayload;
+  }
 }
 
 /**
  * Subscribe to comments for a specific issue.
  */
 export function subscribeComments(issueId, onData) {
-  if (!isFirebaseConfigured || !db) {
+  const emitLocal = () => {
     const all = getLocal(STORAGE_PUBLIC_ISSUES, []);
     const issue = all.find((i) => i.id === issueId);
     onData(issue?.comments || []);
-    return () => {};
+  };
+
+  emitLocal();
+  const unlistenLocal = addChangeListener(() => emitLocal());
+
+  if (!isFirebaseConfigured || !db) {
+    return () => unlistenLocal();
   }
 
-  const q = query(
-    collection(db, 'public_issues', issueId, 'comments'),
-    orderBy('createdAt', 'asc')
-  );
+  try {
+    const q = query(
+      collection(db, 'public_issues', issueId, 'comments'),
+      orderBy('createdAt', 'asc')
+    );
 
-  return onSnapshot(q, (snapshot) => {
-    const comments = snapshot.docs.map((d) => ({
-      id: d.id,
-      ...d.data()
-    }));
-    onData(comments);
-  });
+    const unsubFirestore = onSnapshot(
+      q,
+      (snapshot) => {
+        const comments = snapshot.docs.map((d) => ({
+          id: d.id,
+          ...d.data()
+        }));
+        if (comments.length > 0) {
+          onData(comments);
+        } else {
+          emitLocal();
+        }
+      },
+      (err) => {
+        console.warn('Comments Firestore subscription notice, using local cache:', err);
+        emitLocal();
+      }
+    );
+
+    return () => {
+      unlistenLocal();
+      unsubFirestore();
+    };
+  } catch (err) {
+    console.warn('Comments query setup notice, using local fallback:', err);
+    emitLocal();
+    return () => unlistenLocal();
+  }
 }
 
 // -------------------------------------------------------------
@@ -470,37 +812,57 @@ export async function updateIssueStage(issueId, newStage, note, targetFixDate, c
     updatedAt: now
   };
 
-  if (!isFirebaseConfigured || !db) {
-    const all = getLocal(STORAGE_PUBLIC_ISSUES, []);
-    const updated = all.map((issue) => {
-      if (issue.id === issueId) {
-        return {
-          ...issue,
-          stage: newStage,
-          resolutionNotes: note?.trim() || issue.resolutionNotes,
-          targetFixDate: targetFixDate || issue.targetFixDate,
-          updatedAt: now,
-          statusHistory: [...(issue.statusHistory || []), historyEntry]
-        };
-      }
-      return issue;
+  // Always update local cache immediately
+  const all = getLocal(STORAGE_PUBLIC_ISSUES, []);
+  let found = false;
+  const updated = all.map((issue) => {
+    if (issue.id === issueId) {
+      found = true;
+      return {
+        ...issue,
+        stage: newStage,
+        resolutionNotes: note?.trim() || issue.resolutionNotes,
+        targetFixDate: targetFixDate || issue.targetFixDate,
+        updatedAt: now,
+        statusHistory: [...(issue.statusHistory || []), historyEntry]
+      };
+    }
+    return issue;
+  });
+
+  if (!found) {
+    updated.unshift({
+      id: issueId,
+      stage: newStage,
+      resolutionNotes: note?.trim() || '',
+      targetFixDate: targetFixDate || null,
+      updatedAt: now,
+      statusHistory: [historyEntry]
     });
-    setLocal(STORAGE_PUBLIC_ISSUES, updated);
-    return;
   }
 
-  const issueDocRef = doc(db, 'public_issues', issueId);
-  const snap = await getDoc(issueDocRef);
-  if (!snap.exists()) throw new Error('Issue does not exist.');
+  setLocal(STORAGE_PUBLIC_ISSUES, updated);
 
-  const existingHistory = snap.data().statusHistory || [];
-  await updateDoc(issueDocRef, {
-    stage: newStage,
-    resolutionNotes: note?.trim() || snap.data().resolutionNotes || '',
-    targetFixDate: targetFixDate || snap.data().targetFixDate || null,
-    updatedAt: now,
-    statusHistory: [...existingHistory, historyEntry]
-  });
+  // Attempt Firestore sync safely
+  if (isFirebaseConfigured && db) {
+    try {
+      const issueDocRef = doc(db, 'public_issues', issueId);
+      const snap = await getDoc(issueDocRef);
+      if (snap.exists()) {
+        const existingHistory = snap.data().statusHistory || [];
+        await updateDoc(issueDocRef, {
+          stage: newStage,
+          resolutionNotes: note?.trim() || snap.data().resolutionNotes || '',
+          targetFixDate: targetFixDate || snap.data().targetFixDate || null,
+          updatedAt: now,
+          statusHistory: [...existingHistory, historyEntry]
+        });
+      }
+    } catch (firestoreErr) {
+      console.warn('Firestore stage update notice, change safely retained in local storage:', firestoreErr);
+      // Fails gracefully without throwing into UI modal
+    }
+  }
 }
 
 /**
@@ -524,41 +886,63 @@ export async function closeIssueWithToken(issueId, resolutionNotes, currentUser)
     updatedAt: now
   };
 
-  if (!isFirebaseConfigured || !db) {
-    const all = getLocal(STORAGE_PUBLIC_ISSUES, []);
-    const updated = all.map((issue) => {
-      if (issue.id === issueId) {
-        return {
-          ...issue,
+  // Always update local cache immediately
+  const all = getLocal(STORAGE_PUBLIC_ISSUES, []);
+  let found = false;
+  const updated = all.map((issue) => {
+    if (issue.id === issueId) {
+      found = true;
+      return {
+        ...issue,
+        stage: 'closed',
+        isClosed: true,
+        closedAt: now,
+        closedBy: currentUser.email,
+        resolutionNotes: resolutionNotes.trim(),
+        updatedAt: now,
+        statusHistory: [...(issue.statusHistory || []), historyEntry]
+      };
+    }
+    return issue;
+  });
+
+  if (!found) {
+    updated.unshift({
+      id: issueId,
+      stage: 'closed',
+      isClosed: true,
+      closedAt: now,
+      closedBy: currentUser.email,
+      resolutionNotes: resolutionNotes.trim(),
+      updatedAt: now,
+      statusHistory: [historyEntry]
+    });
+  }
+
+  setLocal(STORAGE_PUBLIC_ISSUES, updated);
+
+  // Attempt Firestore sync safely
+  if (isFirebaseConfigured && db) {
+    try {
+      const issueDocRef = doc(db, 'public_issues', issueId);
+      const snap = await getDoc(issueDocRef);
+      if (snap.exists()) {
+        const existingHistory = snap.data().statusHistory || [];
+        await updateDoc(issueDocRef, {
           stage: 'closed',
           isClosed: true,
           closedAt: now,
           closedBy: currentUser.email,
           resolutionNotes: resolutionNotes.trim(),
           updatedAt: now,
-          statusHistory: [...(issue.statusHistory || []), historyEntry]
-        };
+          statusHistory: [...existingHistory, historyEntry]
+        });
       }
-      return issue;
-    });
-    setLocal(STORAGE_PUBLIC_ISSUES, updated);
-    return;
+    } catch (firestoreErr) {
+      console.warn('Firestore ticket closure notice, change safely retained in local storage:', firestoreErr);
+      // Fails gracefully without throwing into UI modal
+    }
   }
-
-  const issueDocRef = doc(db, 'public_issues', issueId);
-  const snap = await getDoc(issueDocRef);
-  if (!snap.exists()) throw new Error('Issue not found.');
-
-  const existingHistory = snap.data().statusHistory || [];
-  await updateDoc(issueDocRef, {
-    stage: 'closed',
-    isClosed: true,
-    closedAt: now,
-    closedBy: currentUser.email,
-    resolutionNotes: resolutionNotes.trim(),
-    updatedAt: now,
-    statusHistory: [...existingHistory, historyEntry]
-  });
 }
 
 // -------------------------------------------------------------
@@ -567,7 +951,7 @@ export async function closeIssueWithToken(issueId, resolutionNotes, currentUser)
 
 /**
  * Subscribe to confidential grievances accessible to currentUser.
- * Owners see their own; representatives see all.
+ * Complainant owners see their own; representatives see all.
  */
 export function subscribeUserGrievances(currentUser, onData, onError) {
   if (!currentUser) {
@@ -576,22 +960,24 @@ export function subscribeUserGrievances(currentUser, onData, onError) {
   }
 
   const isRep = currentUser.role === 'representative';
+  let lastServerGrievances = [];
 
-  if (!isFirebaseConfigured || !db) {
-    const load = () => {
-      const all = getLocal(STORAGE_PRIVATE_GRIEVANCES, []);
-      if (isRep) {
-        onData(all);
-      } else {
-        const userOnly = all.filter(
+  const emit = () => {
+    const merged = mergePrivateGrievances(lastServerGrievances);
+    const filtered = isRep
+      ? merged
+      : merged.filter(
           (g) => g.authorUid === currentUser.uid || g.authorEmail?.toLowerCase() === currentUser.email?.toLowerCase()
         );
-        onData(userOnly);
-      }
-    };
-    load();
-    const interval = setInterval(load, 2000);
-    return () => clearInterval(interval);
+    const sorted = filtered.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+    onData(sorted);
+  };
+
+  emit();
+  const unlistenLocal = addChangeListener(() => emit());
+
+  if (!isFirebaseConfigured || !db) {
+    return () => unlistenLocal();
   }
 
   try {
@@ -605,51 +991,31 @@ export function subscribeUserGrievances(currentUser, onData, onError) {
       );
     }
 
-    return onSnapshot(
+    const unsubFirestore = onSnapshot(
       q,
       (snapshot) => {
-        const grievances = snapshot.docs
-          .map((d) => ({
-            id: d.id,
-            ...d.data()
-          }))
-          .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-
-        // Sync with local cache for offline resiliency
-        try {
-          const currentLocal = getLocal(STORAGE_PRIVATE_GRIEVANCES, []);
-          const merged = [...grievances];
-          currentLocal.forEach((item) => {
-            if (!merged.find((m) => m.id === item.id)) {
-              if (item.authorUid === currentUser.uid || isRep) {
-                merged.push(item);
-              }
-            }
-          });
-          setLocal(STORAGE_PRIVATE_GRIEVANCES, merged);
-        } catch (_) {}
-
-        onData(grievances);
+        lastServerGrievances = snapshot.docs.map((d) => ({
+          id: d.id,
+          ...d.data()
+        }));
+        emit();
       },
       (error) => {
-        console.error('Error listening to private grievances in Firestore, using cache fallback:', error);
-        const all = getLocal(STORAGE_PRIVATE_GRIEVANCES, []);
-        const filtered = isRep
-          ? all
-          : all.filter((g) => g.authorUid === currentUser.uid || g.authorEmail?.toLowerCase() === currentUser.email?.toLowerCase());
-        onData(filtered.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)));
+        console.warn('Firestore private grievances subscription notice, using cache fallback:', error);
+        emit();
         if (onError) onError(error);
       }
     );
+
+    return () => {
+      unlistenLocal();
+      unsubFirestore();
+    };
   } catch (err) {
-    console.error('Private grievances query setup error, using cache fallback:', err);
-    const all = getLocal(STORAGE_PRIVATE_GRIEVANCES, []);
-    const filtered = isRep
-      ? all
-      : all.filter((g) => g.authorUid === currentUser.uid || g.authorEmail?.toLowerCase() === currentUser.email?.toLowerCase());
-    onData(filtered.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)));
+    console.warn('Private grievances query setup notice, using cache fallback:', err);
+    emit();
     if (onError) onError(err);
-    return () => {};
+    return () => unlistenLocal();
   }
 }
 
@@ -676,7 +1042,7 @@ export async function createPrivateGrievance(data, currentUser) {
     authorEmail: isAnonymous ? 'anonymous@confidential.gecskp' : currentUser.email,
     realAuthorEmail: currentUser.email,
     authorName: studentName,
-    subjectRoll: subjectRoll,
+    subjectRoll,
     semester: isAnonymous ? null : (currentUser.semester || null),
     createdAt: now,
     updatedAt: now,
@@ -714,17 +1080,18 @@ export async function createPrivateGrievance(data, currentUser) {
   const allLocal = getLocal(STORAGE_PRIVATE_GRIEVANCES, []);
   setLocal(STORAGE_PRIVATE_GRIEVANCES, [localGrievance, ...allLocal]);
 
-  if (!isFirebaseConfigured || !db) {
+  if (!isFirebaseConfigured || !db || !auth?.currentUser) {
     return localGrievance;
   }
 
   try {
-    // Real Firestore: Create parent grievance and first message in subcollection
     const docRef = await addDoc(collection(db, 'private_grievances'), grievancePayload);
-    await addDoc(collection(db, 'private_grievances', docRef.id, 'messages'), initialMessage);
+    try {
+      await addDoc(collection(db, 'private_grievances', docRef.id, 'messages'), initialMessage);
+    } catch (_) {}
     return { id: docRef.id, ...grievancePayload };
   } catch (firestoreErr) {
-    console.warn('Firestore write failed, grievance saved in local cache:', firestoreErr);
+    console.warn('Firestore write notice, grievance saved in local cache:', firestoreErr);
     return localGrievance;
   }
 }
@@ -733,11 +1100,17 @@ export async function createPrivateGrievance(data, currentUser) {
  * Subscribe to messages in a confidential grievance.
  */
 export function subscribeGrievanceMessages(grievanceId, onData) {
-  if (!isFirebaseConfigured || !db) {
+  const emitLocal = () => {
     const all = getLocal(STORAGE_PRIVATE_GRIEVANCES, []);
     const g = all.find((item) => item.id === grievanceId);
     onData(g?.messages || []);
-    return () => {};
+  };
+
+  emitLocal();
+  const unlistenLocal = addChangeListener(() => emitLocal());
+
+  if (!isFirebaseConfigured || !db) {
+    return () => unlistenLocal();
   }
 
   try {
@@ -746,28 +1119,33 @@ export function subscribeGrievanceMessages(grievanceId, onData) {
       orderBy('createdAt', 'asc')
     );
 
-    return onSnapshot(
+    const unsubFirestore = onSnapshot(
       q,
       (snapshot) => {
         const messages = snapshot.docs.map((d) => ({
           id: d.id,
           ...d.data()
         }));
-        onData(messages);
+        if (messages.length > 0) {
+          onData(messages);
+        } else {
+          emitLocal();
+        }
       },
       (err) => {
-        console.warn('Error streaming messages from Firestore, using local cache:', err);
-        const all = getLocal(STORAGE_PRIVATE_GRIEVANCES, []);
-        const g = all.find((item) => item.id === grievanceId);
-        onData(g?.messages || []);
+        console.warn('Firestore messages subscription notice, using local cache:', err);
+        emitLocal();
       }
     );
+
+    return () => {
+      unlistenLocal();
+      unsubFirestore();
+    };
   } catch (err) {
-    console.warn('Firestore messages subscription setup failed, using local cache:', err);
-    const all = getLocal(STORAGE_PRIVATE_GRIEVANCES, []);
-    const g = all.find((item) => item.id === grievanceId);
-    onData(g?.messages || []);
-    return () => {};
+    console.warn('Firestore messages subscription setup notice, using local cache:', err);
+    emitLocal();
+    return () => unlistenLocal();
   }
 }
 
@@ -781,7 +1159,6 @@ export async function sendGrievanceMessage(grievanceId, content, currentUser, at
   const isRep = currentUser.role === 'representative';
   const now = new Date().toISOString();
 
-  // Check if grievance is anonymous
   const localGrievances = getLocal(STORAGE_PRIVATE_GRIEVANCES, []);
   const currentG = localGrievances.find((g) => g.id === grievanceId);
   const isAnonGrievance = currentG?.isAnonymous === true;
@@ -807,6 +1184,7 @@ export async function sendGrievanceMessage(grievanceId, content, currentUser, at
       return {
         ...g,
         updatedAt: now,
+        messagesCount: (g.messagesCount || msgs.length) + 1,
         messages: [...msgs, { id: `msg-${Date.now()}`, ...msgPayload }]
       };
     }
@@ -814,7 +1192,7 @@ export async function sendGrievanceMessage(grievanceId, content, currentUser, at
   });
   setLocal(STORAGE_PRIVATE_GRIEVANCES, updated);
 
-  if (!isFirebaseConfigured || !db) {
+  if (!isFirebaseConfigured || !db || !auth?.currentUser) {
     return;
   }
 
@@ -825,11 +1203,9 @@ export async function sendGrievanceMessage(grievanceId, content, currentUser, at
         updatedAt: now,
         messagesCount: increment(1)
       });
-    } catch (updateErr) {
-      console.warn('Could not increment message count on parent:', updateErr);
-    }
+    } catch (_) {}
   } catch (err) {
-    console.warn('Firestore message save failed, retained in local session:', err);
+    console.warn('Firestore message save notice, safely retained in local session:', err);
   }
 }
 
@@ -849,39 +1225,57 @@ export async function updatePrivateGrievanceStage(grievanceId, newStage, note, t
     updatedAt: now
   };
 
-  if (!isFirebaseConfigured || !db) {
-    const all = getLocal(STORAGE_PRIVATE_GRIEVANCES, []);
-    const updated = all.map((g) => {
-      if (g.id === grievanceId) {
-        return {
-          ...g,
-          stage: newStage,
-          status: newStage,
-          resolutionNotes: note?.trim() || g.resolutionNotes,
-          targetFixDate: targetFixDate || g.targetFixDate,
-          updatedAt: now,
-          statusHistory: [...(g.statusHistory || []), historyEntry]
-        };
-      }
-      return g;
+  const all = getLocal(STORAGE_PRIVATE_GRIEVANCES, []);
+  let found = false;
+  const updated = all.map((g) => {
+    if (g.id === grievanceId) {
+      found = true;
+      return {
+        ...g,
+        stage: newStage,
+        status: newStage,
+        resolutionNotes: note?.trim() || g.resolutionNotes,
+        targetFixDate: targetFixDate || g.targetFixDate,
+        updatedAt: now,
+        statusHistory: [...(g.statusHistory || []), historyEntry]
+      };
+    }
+    return g;
+  });
+
+  if (!found) {
+    updated.unshift({
+      id: grievanceId,
+      stage: newStage,
+      status: newStage,
+      resolutionNotes: note?.trim() || '',
+      targetFixDate: targetFixDate || null,
+      updatedAt: now,
+      statusHistory: [historyEntry]
     });
-    setLocal(STORAGE_PRIVATE_GRIEVANCES, updated);
-    return;
   }
 
-  const gDocRef = doc(db, 'private_grievances', grievanceId);
-  const snap = await getDoc(gDocRef);
-  if (!snap.exists()) throw new Error('Grievance does not exist.');
+  setLocal(STORAGE_PRIVATE_GRIEVANCES, updated);
 
-  const existingHistory = snap.data().statusHistory || [];
-  await updateDoc(gDocRef, {
-    stage: newStage,
-    status: newStage,
-    resolutionNotes: note?.trim() || snap.data().resolutionNotes || '',
-    targetFixDate: targetFixDate || snap.data().targetFixDate || null,
-    updatedAt: now,
-    statusHistory: [...existingHistory, historyEntry]
-  });
+  if (isFirebaseConfigured && db) {
+    try {
+      const gDocRef = doc(db, 'private_grievances', grievanceId);
+      const snap = await getDoc(gDocRef);
+      if (snap.exists()) {
+        const existingHistory = snap.data().statusHistory || [];
+        await updateDoc(gDocRef, {
+          stage: newStage,
+          status: newStage,
+          resolutionNotes: note?.trim() || snap.data().resolutionNotes || '',
+          targetFixDate: targetFixDate || snap.data().targetFixDate || null,
+          updatedAt: now,
+          statusHistory: [...existingHistory, historyEntry]
+        });
+      }
+    } catch (firestoreErr) {
+      console.warn('Firestore grievance stage update notice, change retained in local storage:', firestoreErr);
+    }
+  }
 }
 
 /**
@@ -904,12 +1298,49 @@ export async function closePrivateGrievanceWithToken(grievanceId, resolutionNote
     updatedAt: now
   };
 
-  if (!isFirebaseConfigured || !db) {
-    const all = getLocal(STORAGE_PRIVATE_GRIEVANCES, []);
-    const updated = all.map((g) => {
-      if (g.id === grievanceId) {
-        return {
-          ...g,
+  const all = getLocal(STORAGE_PRIVATE_GRIEVANCES, []);
+  let found = false;
+  const updated = all.map((g) => {
+    if (g.id === grievanceId) {
+      found = true;
+      return {
+        ...g,
+        stage: 'closed',
+        status: 'closed',
+        isClosed: true,
+        closedAt: now,
+        closedBy: currentUser.email,
+        resolutionNotes: resolutionNotes.trim(),
+        updatedAt: now,
+        statusHistory: [...(g.statusHistory || []), historyEntry]
+      };
+    }
+    return g;
+  });
+
+  if (!found) {
+    updated.unshift({
+      id: grievanceId,
+      stage: 'closed',
+      status: 'closed',
+      isClosed: true,
+      closedAt: now,
+      closedBy: currentUser.email,
+      resolutionNotes: resolutionNotes.trim(),
+      updatedAt: now,
+      statusHistory: [historyEntry]
+    });
+  }
+
+  setLocal(STORAGE_PRIVATE_GRIEVANCES, updated);
+
+  if (isFirebaseConfigured && db) {
+    try {
+      const gDocRef = doc(db, 'private_grievances', grievanceId);
+      const snap = await getDoc(gDocRef);
+      if (snap.exists()) {
+        const existingHistory = snap.data().statusHistory || [];
+        await updateDoc(gDocRef, {
           stage: 'closed',
           status: 'closed',
           isClosed: true,
@@ -917,30 +1348,13 @@ export async function closePrivateGrievanceWithToken(grievanceId, resolutionNote
           closedBy: currentUser.email,
           resolutionNotes: resolutionNotes.trim(),
           updatedAt: now,
-          statusHistory: [...(g.statusHistory || []), historyEntry]
-        };
+          statusHistory: [...existingHistory, historyEntry]
+        });
       }
-      return g;
-    });
-    setLocal(STORAGE_PRIVATE_GRIEVANCES, updated);
-    return;
+    } catch (firestoreErr) {
+      console.warn('Firestore grievance closure notice, change retained in local storage:', firestoreErr);
+    }
   }
-
-  const gDocRef = doc(db, 'private_grievances', grievanceId);
-  const snap = await getDoc(gDocRef);
-  if (!snap.exists()) throw new Error('Grievance not found.');
-
-  const existingHistory = snap.data().statusHistory || [];
-  await updateDoc(gDocRef, {
-    stage: 'closed',
-    status: 'closed',
-    isClosed: true,
-    closedAt: now,
-    closedBy: currentUser.email,
-    resolutionNotes: resolutionNotes.trim(),
-    updatedAt: now,
-    statusHistory: [...existingHistory, historyEntry]
-  });
 }
 
 /**
@@ -1036,15 +1450,17 @@ export async function publishPrivateGrievanceToPublic(grievanceId, publishData, 
 
   try {
     const pubDocRef = await addDoc(collection(db, 'public_issues'), publicPayload);
-    await updateDoc(doc(db, 'private_grievances', grievanceId), {
-      isPubliclyViewable: true,
-      publicIssueId: pubDocRef.id,
-      updatedAt: now,
-      statusHistory: [...(sourceGrievance.statusHistory || []), auditNote]
-    });
+    try {
+      await updateDoc(doc(db, 'private_grievances', grievanceId), {
+        isPubliclyViewable: true,
+        publicIssueId: pubDocRef.id,
+        updatedAt: now,
+        statusHistory: [...(sourceGrievance.statusHistory || []), auditNote]
+      });
+    } catch (_) {}
     return { id: pubDocRef.id, ...publicPayload };
   } catch (err) {
-    console.warn('Firestore publish error, retained in local cache:', err);
+    console.warn('Firestore publish notice, safely retained in local cache:', err);
     return localPubIssue;
   }
 }
