@@ -356,6 +356,9 @@ export default function App() {
         onAuthSuccess={(user) => {
           if (user) {
             setCurrentUser(user);
+            if (user.role === 'representative') {
+              setActiveTab('operations');
+            }
           }
           setIsAuthOpen(false);
         }}

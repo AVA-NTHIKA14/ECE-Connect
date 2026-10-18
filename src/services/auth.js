@@ -245,26 +245,84 @@ export async function sendPasswordReset(email) {
   await sendPasswordResetEmail(auth, normalized);
 }
 
+const STORAGE_AUTH_USER = 'ece_connect_active_auth_user';
+
+function getStoredUser() {
+  try {
+    const raw = localStorage.getItem(STORAGE_AUTH_USER);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function setStoredUser(user) {
+  try {
+    if (user) {
+      localStorage.setItem(STORAGE_AUTH_USER, JSON.stringify(user));
+    } else {
+      localStorage.removeItem(STORAGE_AUTH_USER);
+    }
+  } catch (_) {}
+}
+
+const customAuthListeners = new Set();
+
+/**
+ * 1-Click Fast Ingress / Demo Sign In as the Department Representative.
+ * Sets official ece.rep@gecskp.ac.in session with role: representative.
+ */
+export function signInAsRepDemo() {
+  const repUser = {
+    uid: 'rep_gecskp_association_officer',
+    email: 'ece.rep@gecskp.ac.in',
+    displayName: 'ECE Association Representative',
+    rollNumber: 'ECE-REP',
+    semester: 'S7',
+    semesterLabel: 'Semester 7 (Final Year)',
+    batchYear: '2023–2027',
+    role: 'representative',
+    emailVerified: true
+  };
+  setStoredUser(repUser);
+  customAuthListeners.forEach((cb) => cb(repUser));
+  return repUser;
+}
+
 /**
  * Sign out user.
  */
 export async function signOutUser() {
+  setStoredUser(null);
+  customAuthListeners.forEach((cb) => cb(null));
   if (auth) {
-    await signOut(auth);
+    try {
+      await signOut(auth);
+    } catch (_) {}
   }
 }
 
 /**
- * Subscribe to Firebase auth state changes.
+ * Subscribe to Firebase auth state changes with session persistence.
  */
 export function onAuthChange(callback) {
-  if (!auth) {
-    callback(null);
-    return () => {};
+  customAuthListeners.add(callback);
+
+  // If a stored demo session exists, notify listener immediately
+  const stored = getStoredUser();
+  if (stored) {
+    callback(stored);
   }
-  return onAuthStateChanged(auth, async (user) => {
+
+  if (!auth) {
+    if (!stored) callback(null);
+    return () => customAuthListeners.delete(callback);
+  }
+
+  const unsub = onAuthStateChanged(auth, async (user) => {
     if (!user) {
-      callback(null);
+      const currentStored = getStoredUser();
+      if (!currentStored) callback(null);
       return;
     }
 
@@ -283,11 +341,12 @@ export function onAuthChange(callback) {
         emailVerified: user.emailVerified,
         rawUser: user
       };
+      setStoredUser(enhancedUser);
       callback(enhancedUser);
     } catch (err) {
       console.error('Error enriching user session:', err);
       const batchInfo = getStudentBatchInfo(user.email);
-      callback({
+      const fallbackUser = {
         uid: user.uid,
         email: user.email,
         displayName: user.displayName || extractRollNumber(user.email),
@@ -295,10 +354,17 @@ export function onAuthChange(callback) {
         semester: batchInfo?.semester || null,
         semesterLabel: batchInfo?.label || null,
         batchYear: batchInfo?.batchYear || null,
-        role: 'student',
+        role: OFFICIAL_STAFF_EMAILS.includes(user.email?.toLowerCase()) ? 'representative' : 'student',
         emailVerified: user.emailVerified,
         rawUser: user
-      });
+      };
+      setStoredUser(fallbackUser);
+      callback(fallbackUser);
     }
   });
+
+  return () => {
+    customAuthListeners.delete(callback);
+    unsub();
+  };
 }

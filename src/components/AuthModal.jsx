@@ -6,6 +6,7 @@ import {
   User,
   ArrowRight,
   ShieldAlert,
+  ShieldCheck,
   CheckCircle2,
   AlertCircle,
   Info,
@@ -20,7 +21,8 @@ import {
   validateStudentEmail,
   isInstitutionalDomain,
   normalizeEmail,
-  OFFICIAL_STAFF_EMAILS
+  OFFICIAL_STAFF_EMAILS,
+  signInAsRepDemo
 } from '../services/auth';
 import { DEPARTMENT_INFO } from '../data/mockData';
 
@@ -89,6 +91,22 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
       }
       setErrorMessage(msg);
     } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleQuickRepLogin = () => {
+    setIsLoading(true);
+    setErrorMessage(null);
+    try {
+      const repUser = signInAsRepDemo();
+      setSuccessMessage('Authenticated as ECE Department Representative!');
+      setTimeout(() => {
+        if (onAuthSuccess) onAuthSuccess(repUser);
+        handleClose();
+      }, 500);
+    } catch (err) {
+      setErrorMessage('Failed to sign in as representative.');
       setIsLoading(false);
     }
   };
@@ -325,6 +343,22 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
                 >
                   Activate Student Account
                 </button>
+              </div>
+
+              {/* 1-Click Fast Representative Access */}
+              <div className="pt-3 border-t border-slate-200 space-y-1.5">
+                <button
+                  type="button"
+                  onClick={handleQuickRepLogin}
+                  disabled={isLoading}
+                  className="w-full py-2.5 px-4 bg-navy-900 hover:bg-navy-800 disabled:opacity-50 text-white rounded-xl text-[13px] font-bold flex items-center justify-center gap-2 shadow-xs transition-all active:scale-[0.99]"
+                >
+                  <ShieldCheck className="w-4 h-4 text-teal-400" />
+                  <span>1-Click Sign In as Department Representative</span>
+                </button>
+                <div className="text-[11px] text-slate-500 text-center font-mono">
+                  Official Ingress: ece.rep@gecskp.ac.in (Role: Representative)
+                </div>
               </div>
             </form>
           )}
