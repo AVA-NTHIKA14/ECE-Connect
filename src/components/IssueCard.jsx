@@ -14,6 +14,7 @@ import {
   GraduationCap
 } from 'lucide-react';
 import StatusTracker from './StatusTracker';
+import { isRepresentativeUser } from '../services/auth';
 
 export default function IssueCard({
   issue,
@@ -32,13 +33,14 @@ export default function IssueCard({
     onUpvote(issue.id);
   };
 
-  const isRep = currentUser?.role === 'representative';
+  const isRep = isRepresentativeUser(currentUser);
   const latestHistory = issue.statusHistory && issue.statusHistory.length > 0
     ? issue.statusHistory[issue.statusHistory.length - 1]
     : null;
 
   return (
-    <div
+    <article
+      aria-labelledby={`issue-card-title-${issue.id}`}
       className="noticeboard-card pin-accent p-5 sm:p-6 text-left flex flex-col justify-between group transition-all duration-200 border border-slate-200"
     >
       <div>
@@ -115,12 +117,12 @@ export default function IssueCard({
             }
           }}
         >
-          <h3 className="text-[18px] sm:text-[19px] font-bold text-navy-900 tracking-tight leading-snug mb-2 group-hover/title:text-teal-700 transition-colors">
+          <h3 id={`issue-card-title-${issue.id}`} className="text-[18px] sm:text-[19px] font-bold text-navy-900 tracking-tight leading-snug mb-2 group-hover/title:text-teal-700 transition-colors">
             {issue.title}
           </h3>
 
-          {/* Body Text (15-16px) */}
-          <p className="text-[15px] text-slate-700 leading-relaxed font-normal mb-4 line-clamp-3">
+          {/* Body Text (minimum 16px / 1rem) */}
+          <p className="text-base text-slate-800 leading-relaxed font-normal mb-4 line-clamp-3">
             {issue.description}
           </p>
         </div>
@@ -182,8 +184,9 @@ export default function IssueCard({
           {/* +1 Affects Me button */}
           <button
             onClick={handleUpvoteClick}
+            disabled={isUpvoteAnimating}
             aria-label={hasUpvoted ? `Remove +1 Affects Me vote for ${issue.title}` : `Vote +1 Affects Me for ${issue.title}`}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-[13px] font-semibold transition-all duration-150 focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-teal-600 focus-visible:outline-none ${
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-[13px] font-semibold transition-all duration-150 focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-teal-600 focus-visible:outline-none disabled:opacity-60 ${
               hasUpvoted
                 ? 'bg-teal-600 text-white shadow-xs'
                 : 'bg-white border border-slate-300 text-navy-900 hover:border-teal-500 hover:text-teal-700'
@@ -217,6 +220,6 @@ export default function IssueCard({
           )}
         </div>
       </div>
-    </div>
+    </article>
   );
 }

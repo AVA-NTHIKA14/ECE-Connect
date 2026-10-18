@@ -6,6 +6,7 @@ import {
   Clock,
   Building2,
   CheckCircle2,
+  AlertCircle,
   X,
   Loader2,
   Inbox
@@ -65,7 +66,7 @@ export default function PublicWall({
   const resolvedCount = issues.filter((i) => i.stage === 'resolved' || i.isClosed).length;
 
   return (
-    <div className="space-y-6 text-left">
+    <section aria-labelledby="wall-heading" className="space-y-6 text-left">
       {/* Complaint Wall Header Card */}
       <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 shadow-sm">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
@@ -76,12 +77,12 @@ export default function PublicWall({
             </div>
 
             {/* Desktop Main Heading: 36-44px */}
-            <h1 className="text-3xl sm:text-[38px] font-extrabold tracking-tight text-navy-900 leading-tight">
+            <h1 id="wall-heading" className="text-3xl sm:text-[38px] font-extrabold tracking-tight text-navy-900 leading-tight">
               ECE Complaint Wall
             </h1>
 
-            {/* Body Text: 15-16px */}
-            <p className="text-[15px] sm:text-[16px] text-slate-700 leading-relaxed font-normal">
+            {/* Body Text: minimum 16px (1rem) */}
+            <p className="text-base text-slate-800 leading-relaxed font-normal">
               A transparent, student-driven grievance wall for issues affecting laboratories, classroom facilities, and academic scheduling at {DEPARTMENT_INFO.institution}. Support shared concerns with <span className="font-semibold text-teal-700">+1 Affects Me</span> to escalate priorities to department representatives and faculty.
             </p>
           </div>
@@ -135,11 +136,13 @@ export default function PublicWall({
       <div className="bg-white border border-slate-200 rounded-xl p-3.5 sm:p-4 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 shadow-sm">
         {/* Search Bar */}
         <div className="relative flex-1">
+          <label htmlFor="search-issues" className="sr-only">
+            Search grievances by classroom, lab room, or problem description
+          </label>
           <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" aria-hidden="true" />
           <input
             id="search-issues"
             type="text"
-            aria-label="Search grievances by room, topic, or problem description"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Search by classroom, lab room, or problem description..."
@@ -159,44 +162,56 @@ export default function PublicWall({
         {/* Filter Dropdowns */}
         <div className="grid grid-cols-1 sm:grid-cols-3 md:flex md:flex-wrap items-center gap-2">
           {/* Category Filter */}
-          <select
-            aria-label="Filter issues by department category"
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
-            className="w-full md:w-auto bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-[13px] font-medium text-slate-700 outline-none hover:border-slate-300 focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20 cursor-pointer"
-          >
-            <option value="all">All Categories</option>
-            <option value="lab">Laboratories</option>
-            <option value="classroom">Classroom AV</option>
-            <option value="facility">Department Facility</option>
-            <option value="academics">KTU Academics</option>
-          </select>
+          <div className="w-full md:w-auto">
+            <label htmlFor="filter-category" className="sr-only">Filter by Department Category</label>
+            <select
+              id="filter-category"
+              aria-label="Filter issues by department category"
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              className="w-full md:w-auto bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-[13px] font-medium text-slate-700 outline-none hover:border-slate-300 focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20 cursor-pointer"
+            >
+              <option value="all">All Categories</option>
+              <option value="lab">Laboratories</option>
+              <option value="classroom">Classroom AV</option>
+              <option value="facility">Department Facility</option>
+              <option value="academics">KTU Academics</option>
+            </select>
+          </div>
 
           {/* Stage Filter */}
-          <select
-            aria-label="Filter issues by resolution stage"
-            value={stageFilter}
-            onChange={(e) => setStageFilter(e.target.value)}
-            className="w-full md:w-auto bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-[13px] font-medium text-slate-700 outline-none hover:border-slate-300 focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20 cursor-pointer"
-          >
-            <option value="all">All Stages</option>
-            <option value="reported">Reported</option>
-            <option value="acknowledged">Acknowledged</option>
-            <option value="in_progress">In Progress</option>
-            <option value="resolved">Resolved</option>
-          </select>
+          <div className="w-full md:w-auto">
+            <label htmlFor="filter-stage" className="sr-only">Filter by Resolution Stage</label>
+            <select
+              id="filter-stage"
+              aria-label="Filter issues by resolution stage"
+              value={stageFilter}
+              onChange={(e) => setStageFilter(e.target.value)}
+              className="w-full md:w-auto bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-[13px] font-medium text-slate-700 outline-none hover:border-slate-300 focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20 cursor-pointer"
+            >
+              <option value="all">All Stages</option>
+              <option value="reported">Reported</option>
+              <option value="acknowledged">Acknowledged</option>
+              <option value="in_progress">In Progress</option>
+              <option value="resolved">Resolved</option>
+            </select>
+          </div>
 
           {/* Sort Filter */}
-          <select
-            aria-label="Sort department issues"
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value)}
-            className="w-full md:w-auto bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-[13px] font-medium text-slate-700 outline-none hover:border-slate-300 focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20 cursor-pointer"
-          >
-            <option value="recent">Sort: Most Recent</option>
-            <option value="upvotes">Sort: Most +1 Affects Me</option>
-            <option value="urgency">Sort: Highest Urgency</option>
-          </select>
+          <div className="w-full md:w-auto">
+            <label htmlFor="sort-issues" className="sr-only">Sort department issues</label>
+            <select
+              id="sort-issues"
+              aria-label="Sort department issues"
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="w-full md:w-auto bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-[13px] font-medium text-slate-700 outline-none hover:border-slate-300 focus:border-teal-600 focus:ring-2 focus:ring-teal-600/20 cursor-pointer"
+            >
+              <option value="recent">Sort: Most Recent</option>
+              <option value="upvotes">Sort: Most +1 Affects Me</option>
+              <option value="urgency">Sort: Highest Urgency</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -217,7 +232,7 @@ export default function PublicWall({
             <div className="font-bold text-[14px] text-amber-950">
               Firestore Cloud Sync Notice: {error.message || 'Missing permissions'}
             </div>
-            <p className="text-[13px] text-amber-800 leading-relaxed font-normal">
+            <p className="text-[14px] text-amber-900 leading-relaxed font-normal">
               Showing grievances from your local session. To enable live cloud synchronization across all student devices, publish the rules in your <strong>Firebase Console &gt; Firestore Database &gt; Rules</strong> tab.
             </p>
           </div>
@@ -247,7 +262,7 @@ export default function PublicWall({
             <h4 className="text-[18px] font-bold text-navy-900">
               No issues reported yet. Be the first to raise a concern.
             </h4>
-            <p className="text-[15px] text-slate-600 max-w-md mx-auto font-normal leading-relaxed">
+            <p className="text-base text-slate-700 max-w-md mx-auto font-normal leading-relaxed">
               The ECE Community Complaint Wall is live and transparent. Raise any issues affecting laboratory equipment, lecture hall projectors, or timetable clashes.
             </p>
             <div className="pt-2">
@@ -275,6 +290,6 @@ export default function PublicWall({
           onOpenAuth={onOpenAuth}
         />
       )}
-    </div>
+    </section>
   );
 }

@@ -9,7 +9,7 @@ import ResolvedArchive from './components/ResolvedArchive';
 import MyComplaints from './components/MyComplaints';
 import IssueDetailsModal from './components/IssueDetailsModal';
 import { DEPARTMENT_INFO } from './data/mockData';
-import { onAuthChange, signOutUser } from './services/auth';
+import { onAuthChange, signOutUser, isRepresentativeUser } from './services/auth';
 import {
   subscribeActivePublicIssues,
   subscribeAllPublicIssues,
@@ -42,6 +42,16 @@ export default function App() {
   // Upvote Tracking dictionary: { [issueId]: boolean }
   const [userVotes, setUserVotes] = useState({});
 
+  // User-facing Notification Toast State
+  const [notification, setNotification] = useState(null); // { message: string, type: 'error' | 'success' | 'info' }
+
+  const showNotification = (message, type = 'info') => {
+    setNotification({ message, type });
+    setTimeout(() => {
+      setNotification((prev) => (prev?.message === message ? null : prev));
+    }, 4000);
+  };
+
   // Modals
   const [isNewIssueOpen, setIsNewIssueOpen] = useState(false);
   const [newIssueInitialMode, setNewIssueInitialMode] = useState(null);
@@ -61,7 +71,7 @@ export default function App() {
 
   // Dedicated role protection effect
   useEffect(() => {
-    if ((!currentUser || currentUser.role !== 'representative') && activeTab === 'operations') {
+    if (!isRepresentativeUser(currentUser) && activeTab === 'operations') {
       setActiveTab('public');
     }
   }, [currentUser, activeTab]);
@@ -75,7 +85,6 @@ export default function App() {
         setIsIssuesLoading(false);
       },
       (err) => {
-        console.error('Error in public issues stream:', err);
         setIssuesError(err);
         setIsIssuesLoading(false);
       }
@@ -98,8 +107,8 @@ export default function App() {
       (loadedVaults) => {
         setVaults(loadedVaults);
       },
-      (err) => {
-        console.error('Error loading confidential grievances:', err);
+      () => {
+        // Handled silently
       }
     );
 
@@ -110,7 +119,7 @@ export default function App() {
 
   // 3b. Subscribe to All Public Issues (for Representative Desk)
   useEffect(() => {
-    if (!currentUser || currentUser.role !== 'representative') {
+    if (!isRepresentativeUser(currentUser)) {
       setRepIssues([]);
       return;
     }
@@ -119,8 +128,8 @@ export default function App() {
       (loaded) => {
         setRepIssues(loaded);
       },
-      (err) => {
-        console.error('Error loading representative public issues:', err);
+      () => {
+        // Handled silently
       }
     );
 
@@ -166,8 +175,7 @@ export default function App() {
         [issueId]: result.hasVoted
       }));
     } catch (err) {
-      console.error('Failed to toggle upvote:', err);
-      alert(err.message || 'Error recording upvote.');
+      showNotification(err.message || 'Error recording upvote. Please try again.', 'error');
     }
   };
 
@@ -212,6 +220,41 @@ export default function App() {
   return (
     <div className="relative min-h-screen bg-[#FAF9F6] text-[#102A56] font-sans antialiased bg-noticeboard-pattern selection:bg-[#087F8C] selection:text-white flex flex-col justify-between">
       
+      {/* Accessibility Skip Link */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:px-4 focus:py-2.5 focus:bg-teal-700 focus:text-white focus:font-semibold focus:rounded-xl focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-white"
+      >
+        Skip to main content
+      </a>
+
+      {/* Global Interactive Notification Toast Banner */}
+      {notification && (
+        <aside
+          role={notification.type === 'error' ? 'alert' : 'status'}
+          aria-live="polite"
+          className={`fixed top-4 right-4 z-50 max-w-md p-4 rounded-xl shadow-lg border flex items-center justify-between gap-3 animate-fadeIn ${
+            notification.type === 'error'
+              ? 'bg-rose-50 border-rose-200 text-rose-900'
+              : notification.type === 'success'
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+              : 'bg-teal-50 border-teal-200 text-teal-900'
+          }`}
+        >
+          <div className="flex items-center gap-2.5 text-[14px] font-medium">
+            <AlertCircle className={`w-5 h-5 shrink-0 ${notification.type === 'error' ? 'text-rose-600' : 'text-teal-600'}`} />
+            <span>{notification.message}</span>
+          </div>
+          <button
+            onClick={() => setNotification(null)}
+            aria-label="Dismiss notification"
+            className="p-1 rounded-lg hover:bg-black/5 text-slate-500 hover:text-slate-800 transition-colors"
+          >
+            <span className="text-lg leading-none">&times;</span>
+          </button>
+        </aside>
+      )}
+
       {/* Configuration Advisory Banner (Displayed only if Firebase environment variables are not yet set) */}
       {!isFirebaseConfigured && (
         <aside
@@ -253,7 +296,11 @@ export default function App() {
         />
 
         {/* Dynamic Content Views */}
-        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <main
+          id="main-content"
+          tabIndex="-1"
+          className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 focus:outline-none"
+        >
           
           {/* VIEW 1: Community Complaint Wall */}
           {activeTab === 'public' && (
@@ -324,7 +371,7 @@ export default function App() {
               <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-200 p-1 flex items-center justify-center shrink-0 shadow-xs">
                 <img
                   src="/logo.png"
-                  alt="ECE GEC PKD Logo"
+                  alt="Government Engineering College Sreekrishnapuram Palakkad Institutional Crest and Department of Electronics & Communication Engineering Logo"
                   className="w-full h-full object-contain"
                 />
               </div>
@@ -356,8 +403,10 @@ export default function App() {
         onAuthSuccess={(user) => {
           if (user) {
             setCurrentUser(user);
-            if (user.role === 'representative') {
+            if (isRepresentativeUser(user)) {
               setActiveTab('operations');
+            } else {
+              setActiveTab('public');
             }
           }
           setIsAuthOpen(false);

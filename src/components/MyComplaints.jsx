@@ -68,7 +68,7 @@ export default function MyComplaints({
   });
 
   return (
-    <div className="space-y-6 text-left">
+    <section aria-labelledby="my-complaints-heading" className="space-y-6 text-left">
       {/* Header */}
       <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 shadow-sm">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
@@ -78,13 +78,11 @@ export default function MyComplaints({
               <span>Personal Tracking Dashboard</span>
             </div>
 
-            {/* Desktop Main Heading: 36-44px */}
-            <h1 className="text-3xl sm:text-[38px] font-extrabold tracking-tight text-navy-900 leading-tight">
+            <h1 id="my-complaints-heading" className="text-3xl sm:text-[38px] font-extrabold tracking-tight text-navy-900 leading-tight">
               My Complaints & Inquiries
             </h1>
 
-            {/* Body Text: 15-16px */}
-            <p className="text-[15px] sm:text-[16px] text-slate-700 font-normal leading-relaxed">
+            <p className="text-base text-slate-700 font-normal leading-relaxed">
               Consolidated tracking for issues you have reported. Review active progress, check representative responses, and inspect resolved complaints.
             </p>
           </div>
@@ -92,7 +90,7 @@ export default function MyComplaints({
           <div className="w-full sm:w-auto shrink-0">
             <button
               onClick={onOpenNewModal}
-              className="w-full sm:w-auto px-5 py-3 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-semibold text-[15px] flex items-center justify-center gap-2 shadow-sm transition-all"
+              className="w-full sm:w-auto px-5 py-3 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-semibold text-base flex items-center justify-center gap-2 shadow-sm transition-all"
             >
               <Plus className="w-4 h-4" />
               <span>Raise New Issue</span>
@@ -124,8 +122,10 @@ export default function MyComplaints({
       </div>
 
       {/* Filter Tabs */}
-      <div className="flex overflow-x-auto no-scrollbar border-b border-slate-200 text-[13px] font-semibold gap-1">
+      <div role="tablist" aria-label="Complaints filter" className="flex overflow-x-auto no-scrollbar border-b border-slate-200 text-sm font-semibold gap-1">
         <button
+          role="tab"
+          aria-selected={filterType === 'all'}
           onClick={() => setFilterType('all')}
           className={`pb-3 px-3 sm:px-4 border-b-2 whitespace-nowrap transition-all ${
             filterType === 'all'
@@ -136,6 +136,8 @@ export default function MyComplaints({
           All Complaints ({combined.length})
         </button>
         <button
+          role="tab"
+          aria-selected={filterType === 'public'}
           onClick={() => setFilterType('public')}
           className={`pb-3 px-3 sm:px-4 border-b-2 whitespace-nowrap transition-all ${
             filterType === 'public'
@@ -146,6 +148,8 @@ export default function MyComplaints({
           Complaint Wall Issues ({myPublic.length})
         </button>
         <button
+          role="tab"
+          aria-selected={filterType === 'private'}
           onClick={() => setFilterType('private')}
           className={`pb-3 px-3 sm:px-4 border-b-2 whitespace-nowrap transition-all ${
             filterType === 'private'
@@ -162,14 +166,25 @@ export default function MyComplaints({
         {filtered.length > 0 ? (
           filtered.map((item) => {
             const isPublic = item.itemType === 'public';
+            const handleSelect = () => {
+              if (isPublic) onSelectPublicIssue(item);
+              else onSelectPrivateGrievance(item);
+            };
+
             return (
-              <div
+              <article
                 key={`${item.itemType}-${item.id}`}
-                onClick={() => {
-                  if (isPublic) onSelectPublicIssue(item);
-                  else onSelectPrivateGrievance(item);
+                role="button"
+                tabIndex={0}
+                onClick={handleSelect}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    handleSelect();
+                  }
                 }}
-                className="noticeboard-card p-5 border border-slate-200 hover:border-teal-500 cursor-pointer transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 group"
+                className="noticeboard-card p-5 border border-slate-200 hover:border-teal-500 cursor-pointer transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 group focus:outline-none focus:ring-2 focus:ring-teal-600 focus:ring-offset-2"
+                aria-label={`View record for ${item.title}`}
               >
                 <div className="space-y-1.5 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
@@ -196,31 +211,29 @@ export default function MyComplaints({
                       {item.category}
                     </span>
 
-                    <span className="text-[12px] text-slate-400 font-mono">
+                    <span className="text-xs text-slate-400 font-mono">
                       {new Date(item.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
                     </span>
                   </div>
 
-                  {/* Title: 18-20px */}
                   <h3 className="text-[18px] sm:text-[19px] font-bold text-navy-900 group-hover:text-teal-700 transition-colors">
                     {item.title}
                   </h3>
 
-                  {/* Body text: 15-16px */}
-                  <p className="text-[15px] text-slate-700 line-clamp-1 font-normal">
+                  <p className="text-base text-slate-700 line-clamp-1 font-normal">
                     {item.description || item.initialMessage}
                   </p>
                 </div>
 
                 <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
-                  <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-700 font-semibold text-[13px] capitalize">
+                  <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-700 font-semibold text-xs capitalize">
                     {item.stage ? item.stage.replace('_', ' ') : (item.status || 'Active')}
                   </span>
                   <div className="w-8 h-8 rounded-full bg-slate-100 group-hover:bg-teal-50 text-slate-400 group-hover:text-teal-700 flex items-center justify-center transition-colors">
                     <ChevronRight className="w-4 h-4" />
                   </div>
                 </div>
-              </div>
+              </article>
             );
           })
         ) : (
@@ -229,12 +242,12 @@ export default function MyComplaints({
             <h4 className="text-[18px] font-bold text-navy-900">
               No Complaints Recorded
             </h4>
-            <p className="text-[14px] text-slate-500 max-w-sm mx-auto font-normal">
+            <p className="text-sm text-slate-500 max-w-sm mx-auto font-normal">
               You haven't submitted any complaints under this filter yet.
             </p>
           </div>
         )}
       </div>
-    </div>
+    </section>
   );
 }

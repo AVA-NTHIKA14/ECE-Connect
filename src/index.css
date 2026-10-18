@@ -5,6 +5,14 @@
 @layer base {
   * {
     border-color: #E2E8F0;
+    transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+    transition-duration: 150ms;
+  }
+
+  :focus-visible {
+    outline: 2px solid #087F8C;
+    outline-offset: 2px;
   }
   
   html, body {
@@ -40,27 +48,15 @@
   }
 
   p, .body-text {
-    font-size: 0.9375rem; /* 15px */
-    line-height: 1.6;
-    color: #334155; /* Slate 700 */
-  }
-
-  @media (min-width: 640px) {
-    p, .body-text {
-      font-size: 1rem; /* 16px */
-    }
+    font-size: 1rem; /* Minimum 16px for optimal accessibility and readability */
+    line-height: 1.625;
+    color: #1E293B; /* Slate 800 - high contrast WCAG AA compliant */
   }
 
   .meta-text {
-    font-size: 0.8125rem; /* 13px */
-    line-height: 1.4;
-    color: #64748B; /* Slate 500 */
-  }
-
-  @media (min-width: 640px) {
-    .meta-text {
-      font-size: 0.875rem; /* 14px */
-    }
+    font-size: 0.875rem; /* 14px */
+    line-height: 1.5;
+    color: #475569; /* Slate 600 */
   }
 
   /* Custom clean subtle scrollbar */

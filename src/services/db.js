@@ -13,228 +13,21 @@ import {
   runTransaction
 } from 'firebase/firestore';
 import { auth, db, isFirebaseConfigured } from './firebase.js';
+import { isRepresentativeUser, OFFICIAL_REPRESENTATIVE_EMAIL } from './auth.js';
+import { sanitizeTitle, sanitizeMultiline, sanitizeRoomOrCode } from '../utils/security.js';
+
+function verifyRepresentative(currentUser) {
+  if (!isRepresentativeUser(currentUser)) {
+    throw new Error(
+      `Access Denied: Only the official ECE Department Representative (${OFFICIAL_REPRESENTATIVE_EMAIL}) is authorized to perform this operation.`
+    );
+  }
+}
 
 // Local storage keys for offline/demo/fallback mode
 const STORAGE_PUBLIC_ISSUES = 'ece_connect_public_issues_v1';
 const STORAGE_PRIVATE_GRIEVANCES = 'ece_connect_private_grievances_v1';
 const STORAGE_VOTES = 'ece_connect_user_votes_v1';
-
-// Seed sample issues for realistic department operations
-const DEFAULT_SEED_ISSUES = [
-  {
-    id: 'PUB-ECE-101',
-    title: 'CRO Channel 2 Signal Distortion on Bench 4',
-    description: 'During frequency modulation experiments, Channel 2 shows 15% DC baseline drift and erratic trigger synchronization. Affects S5 hardware lab sessions.',
-    category: 'lab',
-    lab: 'Analog Circuit Lab',
-    equipmentCode: 'CRO-ACL-04',
-    urgency: 'elevated',
-    stage: 'in_progress',
-    isClosed: false,
-    upvotesCount: 7,
-    commentsCount: 1,
-    authorUid: 'pkd24ec012_uid',
-    authorEmail: 'pkd24ec012@gecskp.ac.in',
-    studentName: 'Aravind K (PKD24EC012)',
-    createdAt: new Date(Date.now() - 36 * 3600 * 1000).toISOString(),
-    updatedAt: new Date(Date.now() - 12 * 3600 * 1000).toISOString(),
-    assignedRep: 'ece.rep@gecskp.ac.in',
-    resolutionNotes: 'Superintendent notified. Replacement probe kit ordered under Requisition IND-2026-089.',
-    targetFixDate: '2026-10-25',
-    statusHistory: [
-      {
-        stage: 'reported',
-        note: 'Issue reported to ECE Community Wall.',
-        updatedBy: 'pkd24ec012@gecskp.ac.in',
-        updatedAt: new Date(Date.now() - 36 * 3600 * 1000).toISOString()
-      },
-      {
-        stage: 'acknowledged',
-        note: 'Bench verified by Department Representative.',
-        updatedBy: 'ece.rep@gecskp.ac.in',
-        updatedAt: new Date(Date.now() - 24 * 3600 * 1000).toISOString()
-      },
-      {
-        stage: 'in_progress',
-        note: 'Replacement probe kit ordered under Requisition IND-2026-089.',
-        updatedBy: 'ece.rep@gecskp.ac.in',
-        updatedAt: new Date(Date.now() - 12 * 3600 * 1000).toISOString()
-      }
-    ],
-    comments: [
-      {
-        id: 'c-seed-1',
-        text: 'Observed the same during AM detector circuit testing on Friday afternoon.',
-        authorUid: 'pkd24ec035_uid',
-        authorEmail: 'pkd24ec035@gecskp.ac.in',
-        authorName: 'Sneha P (PKD24EC035)',
-        createdAt: new Date(Date.now() - 18 * 3600 * 1000).toISOString()
-      }
-    ]
-  },
-  {
-    id: 'PUB-ECE-102',
-    title: 'Digital Storage Oscilloscope Power Supply Trip',
-    description: 'Master DSO unit on Central Test Bench trips whenever input voltage exceeds 12V P-P. Lab assistant advised safety shutdown until inspected.',
-    category: 'lab',
-    lab: 'Digital Circuits Lab',
-    equipmentCode: 'DSO-DCL-01',
-    urgency: 'critical',
-    stage: 'acknowledged',
-    isClosed: false,
-    upvotesCount: 14,
-    commentsCount: 0,
-    authorUid: 'pkd23ec008_uid',
-    authorEmail: 'pkd23ec008@gecskp.ac.in',
-    studentName: 'Rahul Menon (PKD23EC008)',
-    createdAt: new Date(Date.now() - 16 * 3600 * 1000).toISOString(),
-    updatedAt: new Date(Date.now() - 8 * 3600 * 1000).toISOString(),
-    assignedRep: 'ece.rep@gecskp.ac.in',
-    resolutionNotes: 'Service technician scheduled for on-site diagnostic.',
-    targetFixDate: '2026-10-22',
-    statusHistory: [
-      {
-        stage: 'reported',
-        note: 'Reported by Final Year student.',
-        updatedBy: 'pkd23ec008@gecskp.ac.in',
-        updatedAt: new Date(Date.now() - 16 * 3600 * 1000).toISOString()
-      },
-      {
-        stage: 'acknowledged',
-        note: 'Tagged critical priority. Lab assistant notified.',
-        updatedBy: 'ece.rep@gecskp.ac.in',
-        updatedAt: new Date(Date.now() - 8 * 3600 * 1000).toISOString()
-      }
-    ]
-  },
-  {
-    id: 'PUB-ECE-103',
-    title: 'Projector HDMI Input Failing in 3rd Year EC Classroom',
-    description: 'Ceiling projector flickers and loses sync after 10 minutes of presentation. Seminar and guest lectures affected.',
-    category: 'facility',
-    lab: '3rd Year EC Class',
-    equipmentCode: 'PRJ-3EC-01',
-    urgency: 'normal',
-    stage: 'reported',
-    isClosed: false,
-    upvotesCount: 5,
-    commentsCount: 0,
-    authorUid: 'pkd24ec045_uid',
-    authorEmail: 'pkd24ec045@gecskp.ac.in',
-    studentName: 'ECE Student (Anonymous)',
-    createdAt: new Date(Date.now() - 4 * 3600 * 1000).toISOString(),
-    updatedAt: new Date(Date.now() - 4 * 3600 * 1000).toISOString(),
-    assignedRep: 'ece.rep@gecskp.ac.in',
-    resolutionNotes: null,
-    targetFixDate: null,
-    statusHistory: [
-      {
-        stage: 'reported',
-        note: 'Submitted anonymously via student portal.',
-        updatedBy: 'Anonymous Student',
-        updatedAt: new Date(Date.now() - 4 * 3600 * 1000).toISOString()
-      }
-    ]
-  }
-];
-
-const DEFAULT_SEED_GRIEVANCES = [
-  {
-    id: 'VAULT-ECE-001',
-    title: 'Discrepancy in S5 DSP Practical Internal Marks Allocation',
-    category: 'academics',
-    urgency: 'elevated',
-    isAnonymous: true,
-    status: 'acknowledged',
-    stage: 'acknowledged',
-    isClosed: false,
-    authorUid: 'pkd24ec021_uid',
-    authorEmail: 'anonymous@confidential.gecskp',
-    realAuthorEmail: 'pkd24ec021@gecskp.ac.in',
-    authorName: 'Anonymous Student',
-    subjectRoll: 'CONFIDENTIAL',
-    semester: null,
-    createdAt: new Date(Date.now() - 28 * 3600 * 1000).toISOString(),
-    updatedAt: new Date(Date.now() - 6 * 3600 * 1000).toISOString(),
-    assignedRep: 'ece.rep@gecskp.ac.in',
-    resolutionNotes: 'Representative verified mark sheets with Lab Faculty In-charge.',
-    messagesCount: 2,
-    statusHistory: [
-      {
-        stage: 'reported',
-        note: 'Confidential grievance submitted anonymously.',
-        updatedBy: 'Anonymous Student',
-        updatedAt: new Date(Date.now() - 28 * 3600 * 1000).toISOString()
-      },
-      {
-        stage: 'acknowledged',
-        note: 'Representative verified mark sheets with Lab Faculty In-charge.',
-        updatedBy: 'ece.rep@gecskp.ac.in',
-        updatedAt: new Date(Date.now() - 6 * 3600 * 1000).toISOString()
-      }
-    ],
-    messages: [
-      {
-        id: 'msg-seed-1',
-        senderUid: 'pkd24ec021_uid',
-        senderRole: 'student',
-        senderLabel: 'Anonymous Student (Vault Owner)',
-        content: 'Respected representative, during the DSP simulation exam on Tuesday, our batch was evaluated on a different problem statement rubric than communicated. Could you please request HOD clarification?',
-        attachments: [],
-        createdAt: new Date(Date.now() - 28 * 3600 * 1000).toISOString()
-      },
-      {
-        id: 'msg-seed-2',
-        senderUid: 'rep_gecskp_association_officer',
-        senderRole: 'rep',
-        senderLabel: 'ECE Association Representative',
-        content: 'Acknowledged. We spoke with the faculty in charge today. A revised moderation rubric will be published on Monday notice board.',
-        attachments: [],
-        createdAt: new Date(Date.now() - 6 * 3600 * 1000).toISOString()
-      }
-    ]
-  },
-  {
-    id: 'VAULT-ECE-002',
-    title: 'Department Library Reading Room Air Circulation & Evening Access',
-    category: 'welfare',
-    urgency: 'normal',
-    isAnonymous: false,
-    status: 'reported',
-    stage: 'reported',
-    isClosed: false,
-    authorUid: 'pkd23ec045_uid',
-    authorEmail: 'pkd23ec045@gecskp.ac.in',
-    realAuthorEmail: 'pkd23ec045@gecskp.ac.in',
-    authorName: 'Karthik R (PKD23EC045)',
-    subjectRoll: 'PKD23EC045',
-    semester: 'S7',
-    createdAt: new Date(Date.now() - 10 * 3600 * 1000).toISOString(),
-    updatedAt: new Date(Date.now() - 10 * 3600 * 1000).toISOString(),
-    assignedRep: 'ece.rep@gecskp.ac.in',
-    resolutionNotes: null,
-    messagesCount: 1,
-    statusHistory: [
-      {
-        stage: 'reported',
-        note: 'Confidential grievance submitted by Karthik R (PKD23EC045).',
-        updatedBy: 'PKD23EC045',
-        updatedAt: new Date(Date.now() - 10 * 3600 * 1000).toISOString()
-      }
-    ],
-    messages: [
-      {
-        id: 'msg-seed-3',
-        senderUid: 'pkd23ec045_uid',
-        senderRole: 'student',
-        senderLabel: 'Karthik R (Student)',
-        content: 'Request to keep the ECE departmental reading room open until 6:30 PM during university exam month. Currently closed at 4:30 PM with staff exit.',
-        attachments: [],
-        createdAt: new Date(Date.now() - 10 * 3600 * 1000).toISOString()
-      }
-    ]
-  }
-];
 
 // Reactive internal pub-sub listeners for real-time local updates
 const changeListeners = new Set();
@@ -250,9 +43,7 @@ function broadcastChange(type = 'all') {
   changeListeners.forEach((cb) => {
     try {
       cb(type);
-    } catch (e) {
-      console.warn('Change listener notification warning:', e);
-    }
+    } catch (_) {}
   });
   if (typeof window !== 'undefined') {
     try {
@@ -273,14 +64,6 @@ function getLocal(key, defaultVal = []) {
   try {
     const raw = localStorage.getItem(key);
     if (!raw) {
-      if (key === STORAGE_PUBLIC_ISSUES && defaultVal.length === 0) {
-        localStorage.setItem(key, JSON.stringify(DEFAULT_SEED_ISSUES));
-        return [...DEFAULT_SEED_ISSUES];
-      }
-      if (key === STORAGE_PRIVATE_GRIEVANCES && defaultVal.length === 0) {
-        localStorage.setItem(key, JSON.stringify(DEFAULT_SEED_GRIEVANCES));
-        return [...DEFAULT_SEED_GRIEVANCES];
-      }
       return defaultVal;
     }
     return JSON.parse(raw);
@@ -293,9 +76,7 @@ function setLocal(key, val) {
   try {
     localStorage.setItem(key, JSON.stringify(val));
     broadcastChange(key);
-  } catch (err) {
-    console.warn('LocalStorage write failed:', err);
-  }
+  } catch (_) {}
 }
 
 /**
@@ -404,7 +185,6 @@ export function subscribeActivePublicIssues(onData, onError) {
         emit();
       },
       (error) => {
-        console.warn('Firestore active public issues subscription notice, using cache fallback:', error);
         emit();
         if (onError) onError(error);
       }
@@ -415,7 +195,6 @@ export function subscribeActivePublicIssues(onData, onError) {
       unsubFirestore();
     };
   } catch (err) {
-    console.warn('Firestore subscription error, using cache fallback:', err);
     emit();
     if (onError) onError(err);
     return () => unlistenLocal();
@@ -459,7 +238,6 @@ export function subscribeArchivedIssues(onData, onError) {
         emit();
       },
       (error) => {
-        console.warn('Firestore archive query notice, using cache fallback:', error);
         emit();
         if (onError) onError(error);
       }
@@ -470,7 +248,6 @@ export function subscribeArchivedIssues(onData, onError) {
       unsubFirestore();
     };
   } catch (err) {
-    console.warn('Firestore archive query error, using cache fallback:', err);
     emit();
     if (onError) onError(err);
     return () => unlistenLocal();
@@ -509,7 +286,6 @@ export function subscribeAllPublicIssues(onData, onError) {
         emit();
       },
       (error) => {
-        console.warn('Firestore all issues notice, using cache fallback:', error);
         emit();
         if (onError) onError(error);
       }
@@ -520,7 +296,6 @@ export function subscribeAllPublicIssues(onData, onError) {
       unsubFirestore();
     };
   } catch (err) {
-    console.warn('Firestore subscription error for all issues, using cache fallback:', err);
     emit();
     if (onError) onError(err);
     return () => unlistenLocal();
@@ -537,12 +312,18 @@ export async function createPublicIssue(data, currentUser) {
   const isAnonymous = Boolean(data.hideIdentity);
   const studentName = isAnonymous ? 'ECE Student (Anonymous)' : (currentUser.displayName || currentUser.rollNumber);
 
+  const cleanTitle = sanitizeTitle(data.title);
+  const cleanDescription = sanitizeMultiline(data.description);
+  if (!cleanTitle || !cleanDescription) {
+    throw new Error('Please provide a valid title and problem description.');
+  }
+
   const issuePayload = {
-    title: data.title.trim(),
-    description: data.description.trim(),
+    title: cleanTitle,
+    description: cleanDescription,
     category: data.category || 'lab',
-    lab: data.lab || 'ECE Department Facility',
-    equipmentCode: (data.equipmentCode || 'GENERAL-ASSET').trim().toUpperCase(),
+    lab: sanitizeRoomOrCode(data.lab || 'ECE Department Facility'),
+    equipmentCode: sanitizeRoomOrCode(data.equipmentCode || 'GENERAL-ASSET').toUpperCase(),
     urgency: data.urgency || 'normal',
     stage: 'reported',
     isClosed: false,
@@ -589,8 +370,7 @@ export async function createPublicIssue(data, currentUser) {
       });
     } catch (_) {}
     return { id: docRef.id, ...issuePayload };
-  } catch (firestoreErr) {
-    console.warn('Firestore write notice, issue safely retained in local session:', firestoreErr);
+  } catch (_) {
     return localIssue;
   }
 }
@@ -662,8 +442,7 @@ export async function toggleUpvote(issueId, currentUser) {
         return { hasVoted: true, count: currentCount + 1 };
       }
     });
-  } catch (err) {
-    console.warn('Firestore vote transaction notice, vote safely recorded in local session:', err);
+  } catch (_) {
     return { hasVoted: !hasVoted, count: newCount };
   }
 }
@@ -684,7 +463,7 @@ export async function checkUserVote(issueId, currentUser) {
   try {
     const voteSnap = await getDoc(doc(db, 'public_issues', issueId, 'votes', currentUser.uid));
     return voteSnap.exists() || localVoted;
-  } catch (err) {
+  } catch (_) {
     return localVoted;
   }
 }
@@ -694,12 +473,13 @@ export async function checkUserVote(issueId, currentUser) {
  */
 export async function addPublicComment(issueId, text, currentUser) {
   if (!currentUser) throw new Error('Authentication required to post an observation.');
-  if (!text || !text.trim()) throw new Error('Comment cannot be empty.');
+  const cleanText = sanitizeMultiline(text, 1000);
+  if (!cleanText) throw new Error('Comment cannot be empty.');
 
   const now = new Date().toISOString();
   const commentPayload = {
     id: `c-${Date.now()}`,
-    text: text.trim(),
+    text: cleanText,
     authorUid: currentUser.uid,
     authorEmail: currentUser.email,
     authorName: currentUser.displayName || currentUser.rollNumber,
@@ -733,8 +513,7 @@ export async function addPublicComment(issueId, text, currentUser) {
       });
     } catch (_) {}
     return { id: commentRef.id, ...commentPayload };
-  } catch (err) {
-    console.warn('Firestore comment write notice, retained in local session:', err);
+  } catch (_) {
     return commentPayload;
   }
 }
@@ -776,7 +555,6 @@ export function subscribeComments(issueId, onData) {
         }
       },
       (err) => {
-        console.warn('Comments Firestore subscription notice, using local cache:', err);
         emitLocal();
       }
     );
@@ -786,7 +564,6 @@ export function subscribeComments(issueId, onData) {
       unsubFirestore();
     };
   } catch (err) {
-    console.warn('Comments query setup notice, using local fallback:', err);
     emitLocal();
     return () => unlistenLocal();
   }
@@ -800,14 +577,13 @@ export function subscribeComments(issueId, onData) {
  * Update issue lifecycle stage (Reported -> Acknowledged -> In Progress -> Resolved).
  */
 export async function updateIssueStage(issueId, newStage, note, targetFixDate, currentUser) {
-  if (!currentUser || currentUser.role !== 'representative') {
-    throw new Error('Unauthorized. Only verified student representatives can update issue stages.');
-  }
+  verifyRepresentative(currentUser);
 
+  const cleanNote = note ? sanitizeMultiline(note, 1500) : '';
   const now = new Date().toISOString();
   const historyEntry = {
     stage: newStage,
-    note: note?.trim() || `Status updated to ${newStage.replace('_', ' ')}.`,
+    note: cleanNote || `Status updated to ${newStage.replace('_', ' ')}.`,
     updatedBy: currentUser.email,
     updatedAt: now
   };
@@ -821,7 +597,7 @@ export async function updateIssueStage(issueId, newStage, note, targetFixDate, c
       return {
         ...issue,
         stage: newStage,
-        resolutionNotes: note?.trim() || issue.resolutionNotes,
+        resolutionNotes: cleanNote || issue.resolutionNotes,
         targetFixDate: targetFixDate || issue.targetFixDate,
         updatedAt: now,
         statusHistory: [...(issue.statusHistory || []), historyEntry]
@@ -834,7 +610,7 @@ export async function updateIssueStage(issueId, newStage, note, targetFixDate, c
     updated.unshift({
       id: issueId,
       stage: newStage,
-      resolutionNotes: note?.trim() || '',
+      resolutionNotes: cleanNote || '',
       targetFixDate: targetFixDate || null,
       updatedAt: now,
       statusHistory: [historyEntry]
@@ -852,14 +628,13 @@ export async function updateIssueStage(issueId, newStage, note, targetFixDate, c
         const existingHistory = snap.data().statusHistory || [];
         await updateDoc(issueDocRef, {
           stage: newStage,
-          resolutionNotes: note?.trim() || snap.data().resolutionNotes || '',
+          resolutionNotes: cleanNote || snap.data().resolutionNotes || '',
           targetFixDate: targetFixDate || snap.data().targetFixDate || null,
           updatedAt: now,
           statusHistory: [...existingHistory, historyEntry]
         });
       }
-    } catch (firestoreErr) {
-      console.warn('Firestore stage update notice, change safely retained in local storage:', firestoreErr);
+    } catch (_) {
       // Fails gracefully without throwing into UI modal
     }
   }
@@ -870,18 +645,17 @@ export async function updateIssueStage(issueId, newStage, note, targetFixDate, c
  * Requires resolution notes.
  */
 export async function closeIssueWithToken(issueId, resolutionNotes, currentUser) {
-  if (!currentUser || currentUser.role !== 'representative') {
-    throw new Error('Unauthorized. Only verified representatives can officially close issues.');
-  }
+  verifyRepresentative(currentUser);
 
-  if (!resolutionNotes || !resolutionNotes.trim()) {
+  const cleanNotes = sanitizeMultiline(resolutionNotes, 1500);
+  if (!cleanNotes) {
     throw new Error('Resolution log notes are mandatory before an issue can be formally closed.');
   }
 
   const now = new Date().toISOString();
   const historyEntry = {
     stage: 'closed',
-    note: `[OFFICIALLY CLOSED] ${resolutionNotes.trim()}`,
+    note: `[OFFICIALLY CLOSED] ${cleanNotes}`,
     updatedBy: currentUser.email,
     updatedAt: now
   };
@@ -898,7 +672,7 @@ export async function closeIssueWithToken(issueId, resolutionNotes, currentUser)
         isClosed: true,
         closedAt: now,
         closedBy: currentUser.email,
-        resolutionNotes: resolutionNotes.trim(),
+        resolutionNotes: cleanNotes,
         updatedAt: now,
         statusHistory: [...(issue.statusHistory || []), historyEntry]
       };
@@ -913,7 +687,7 @@ export async function closeIssueWithToken(issueId, resolutionNotes, currentUser)
       isClosed: true,
       closedAt: now,
       closedBy: currentUser.email,
-      resolutionNotes: resolutionNotes.trim(),
+      resolutionNotes: cleanNotes,
       updatedAt: now,
       statusHistory: [historyEntry]
     });
@@ -933,13 +707,12 @@ export async function closeIssueWithToken(issueId, resolutionNotes, currentUser)
           isClosed: true,
           closedAt: now,
           closedBy: currentUser.email,
-          resolutionNotes: resolutionNotes.trim(),
+          resolutionNotes: cleanNotes,
           updatedAt: now,
           statusHistory: [...existingHistory, historyEntry]
         });
       }
-    } catch (firestoreErr) {
-      console.warn('Firestore ticket closure notice, change safely retained in local storage:', firestoreErr);
+    } catch (_) {
       // Fails gracefully without throwing into UI modal
     }
   }
@@ -959,7 +732,7 @@ export function subscribeUserGrievances(currentUser, onData, onError) {
     return () => {};
   }
 
-  const isRep = currentUser.role === 'representative';
+  const isRep = isRepresentativeUser(currentUser);
   let lastServerGrievances = [];
 
   const emit = () => {
@@ -1001,7 +774,6 @@ export function subscribeUserGrievances(currentUser, onData, onError) {
         emit();
       },
       (error) => {
-        console.warn('Firestore private grievances subscription notice, using cache fallback:', error);
         emit();
         if (onError) onError(error);
       }
@@ -1012,7 +784,6 @@ export function subscribeUserGrievances(currentUser, onData, onError) {
       unsubFirestore();
     };
   } catch (err) {
-    console.warn('Private grievances query setup notice, using cache fallback:', err);
     emit();
     if (onError) onError(err);
     return () => unlistenLocal();
@@ -1025,13 +796,19 @@ export function subscribeUserGrievances(currentUser, onData, onError) {
 export async function createPrivateGrievance(data, currentUser) {
   if (!currentUser) throw new Error('Please sign in to submit a confidential grievance.');
 
+  const cleanTitle = sanitizeTitle(data.title);
+  const cleanMessage = sanitizeMultiline(data.initialMessage);
+  if (!cleanTitle || !cleanMessage) {
+    throw new Error('Please complete the title and message fields.');
+  }
+
   const now = new Date().toISOString();
   const isAnonymous = Boolean(data.isAnonymous);
   const studentName = isAnonymous ? 'Anonymous Student' : (currentUser.displayName || currentUser.rollNumber || 'Student');
   const subjectRoll = isAnonymous ? 'CONFIDENTIAL' : (currentUser.rollNumber || 'STUDENT');
 
   const grievancePayload = {
-    title: data.title.trim(),
+    title: cleanTitle,
     category: data.category || 'welfare',
     urgency: data.urgency || 'normal',
     isAnonymous,
@@ -1065,7 +842,7 @@ export async function createPrivateGrievance(data, currentUser) {
     senderUid: currentUser.uid,
     senderRole: 'student',
     senderLabel: isAnonymous ? 'Anonymous Student (Vault Owner)' : `${studentName} (${currentUser.rollNumber || 'Student'})`,
-    content: data.initialMessage.trim(),
+    content: cleanMessage,
     attachments: data.attachments || [],
     createdAt: now
   };
@@ -1090,8 +867,7 @@ export async function createPrivateGrievance(data, currentUser) {
       await addDoc(collection(db, 'private_grievances', docRef.id, 'messages'), initialMessage);
     } catch (_) {}
     return { id: docRef.id, ...grievancePayload };
-  } catch (firestoreErr) {
-    console.warn('Firestore write notice, grievance saved in local cache:', firestoreErr);
+  } catch (_) {
     return localGrievance;
   }
 }
@@ -1133,7 +909,6 @@ export function subscribeGrievanceMessages(grievanceId, onData) {
         }
       },
       (err) => {
-        console.warn('Firestore messages subscription notice, using local cache:', err);
         emitLocal();
       }
     );
@@ -1143,7 +918,6 @@ export function subscribeGrievanceMessages(grievanceId, onData) {
       unsubFirestore();
     };
   } catch (err) {
-    console.warn('Firestore messages subscription setup notice, using local cache:', err);
     emitLocal();
     return () => unlistenLocal();
   }
@@ -1154,7 +928,8 @@ export function subscribeGrievanceMessages(grievanceId, onData) {
  */
 export async function sendGrievanceMessage(grievanceId, content, currentUser, attachments = []) {
   if (!currentUser) throw new Error('Authentication required to send message.');
-  if (!content || !content.trim()) throw new Error('Message cannot be empty.');
+  const cleanContent = sanitizeMultiline(content, 2000);
+  if (!cleanContent) throw new Error('Message cannot be empty.');
 
   const isRep = currentUser.role === 'representative';
   const now = new Date().toISOString();
@@ -1171,7 +946,7 @@ export async function sendGrievanceMessage(grievanceId, content, currentUser, at
     senderUid: currentUser.uid,
     senderRole: isRep ? 'rep' : 'student',
     senderLabel,
-    content: content.trim(),
+    content: cleanContent,
     attachments: attachments || [],
     createdAt: now
   };
@@ -1204,8 +979,8 @@ export async function sendGrievanceMessage(grievanceId, content, currentUser, at
         messagesCount: increment(1)
       });
     } catch (_) {}
-  } catch (err) {
-    console.warn('Firestore message save notice, safely retained in local session:', err);
+  } catch (_) {
+    // Retained safely in local storage
   }
 }
 
@@ -1213,14 +988,13 @@ export async function sendGrievanceMessage(grievanceId, content, currentUser, at
  * Update private grievance lifecycle stage (Reported -> Acknowledged -> In Progress -> Resolved).
  */
 export async function updatePrivateGrievanceStage(grievanceId, newStage, note, targetFixDate, currentUser) {
-  if (!currentUser || currentUser.role !== 'representative') {
-    throw new Error('Unauthorized. Only verified representatives can update grievance stages.');
-  }
+  verifyRepresentative(currentUser);
 
+  const cleanNote = note ? sanitizeMultiline(note, 1500) : '';
   const now = new Date().toISOString();
   const historyEntry = {
     stage: newStage,
-    note: note?.trim() || `Status updated to ${newStage.replace('_', ' ')}.`,
+    note: cleanNote || `Status updated to ${newStage.replace('_', ' ')}.`,
     updatedBy: currentUser.email,
     updatedAt: now
   };
@@ -1234,7 +1008,7 @@ export async function updatePrivateGrievanceStage(grievanceId, newStage, note, t
         ...g,
         stage: newStage,
         status: newStage,
-        resolutionNotes: note?.trim() || g.resolutionNotes,
+        resolutionNotes: cleanNote || g.resolutionNotes,
         targetFixDate: targetFixDate || g.targetFixDate,
         updatedAt: now,
         statusHistory: [...(g.statusHistory || []), historyEntry]
@@ -1248,7 +1022,7 @@ export async function updatePrivateGrievanceStage(grievanceId, newStage, note, t
       id: grievanceId,
       stage: newStage,
       status: newStage,
-      resolutionNotes: note?.trim() || '',
+      resolutionNotes: cleanNote || '',
       targetFixDate: targetFixDate || null,
       updatedAt: now,
       statusHistory: [historyEntry]
@@ -1266,14 +1040,14 @@ export async function updatePrivateGrievanceStage(grievanceId, newStage, note, t
         await updateDoc(gDocRef, {
           stage: newStage,
           status: newStage,
-          resolutionNotes: note?.trim() || snap.data().resolutionNotes || '',
+          resolutionNotes: cleanNote || snap.data().resolutionNotes || '',
           targetFixDate: targetFixDate || snap.data().targetFixDate || null,
           updatedAt: now,
           statusHistory: [...existingHistory, historyEntry]
         });
       }
-    } catch (firestoreErr) {
-      console.warn('Firestore grievance stage update notice, change retained in local storage:', firestoreErr);
+    } catch (_) {
+      // Retained in local storage
     }
   }
 }
@@ -1282,18 +1056,17 @@ export async function updatePrivateGrievanceStage(grievanceId, newStage, note, t
  * Close a private grievance with official CLOSED token stamp.
  */
 export async function closePrivateGrievanceWithToken(grievanceId, resolutionNotes, currentUser) {
-  if (!currentUser || currentUser.role !== 'representative') {
-    throw new Error('Unauthorized. Only verified representatives can close grievances.');
-  }
+  verifyRepresentative(currentUser);
 
-  if (!resolutionNotes || !resolutionNotes.trim()) {
+  const cleanNotes = sanitizeMultiline(resolutionNotes, 1500);
+  if (!cleanNotes) {
     throw new Error('Resolution log notes are mandatory before a ticket can be closed.');
   }
 
   const now = new Date().toISOString();
   const historyEntry = {
     stage: 'closed',
-    note: `[OFFICIALLY CLOSED] ${resolutionNotes.trim()}`,
+    note: `[OFFICIALLY CLOSED] ${cleanNotes}`,
     updatedBy: currentUser.email,
     updatedAt: now
   };
@@ -1310,7 +1083,7 @@ export async function closePrivateGrievanceWithToken(grievanceId, resolutionNote
         isClosed: true,
         closedAt: now,
         closedBy: currentUser.email,
-        resolutionNotes: resolutionNotes.trim(),
+        resolutionNotes: cleanNotes,
         updatedAt: now,
         statusHistory: [...(g.statusHistory || []), historyEntry]
       };
@@ -1326,7 +1099,7 @@ export async function closePrivateGrievanceWithToken(grievanceId, resolutionNote
       isClosed: true,
       closedAt: now,
       closedBy: currentUser.email,
-      resolutionNotes: resolutionNotes.trim(),
+      resolutionNotes: cleanNotes,
       updatedAt: now,
       statusHistory: [historyEntry]
     });
@@ -1346,13 +1119,13 @@ export async function closePrivateGrievanceWithToken(grievanceId, resolutionNote
           isClosed: true,
           closedAt: now,
           closedBy: currentUser.email,
-          resolutionNotes: resolutionNotes.trim(),
+          resolutionNotes: cleanNotes,
           updatedAt: now,
           statusHistory: [...existingHistory, historyEntry]
         });
       }
-    } catch (firestoreErr) {
-      console.warn('Firestore grievance closure notice, change retained in local storage:', firestoreErr);
+    } catch (_) {
+      // Retained in local storage
     }
   }
 }
@@ -1362,9 +1135,7 @@ export async function closePrivateGrievanceWithToken(grievanceId, resolutionNote
  * Strictly preserves student anonymity if isAnonymous is true.
  */
 export async function publishPrivateGrievanceToPublic(grievanceId, publishData, currentUser) {
-  if (!currentUser || currentUser.role !== 'representative') {
-    throw new Error('Unauthorized. Only verified representatives can publish inquiries to the Community Wall.');
-  }
+  verifyRepresentative(currentUser);
 
   const now = new Date().toISOString();
 
@@ -1387,11 +1158,15 @@ export async function publishPrivateGrievanceToPublic(grievanceId, publishData, 
   const isAnon = Boolean(sourceGrievance.isAnonymous || publishData.forceAnonymous);
   const studentName = isAnon ? 'ECE Student (Anonymous)' : (sourceGrievance.authorName || 'ECE Student');
 
+  const cleanTitle = sanitizeTitle(publishData.title || sourceGrievance.title);
+  const cleanDesc = sanitizeMultiline(publishData.description || sourceGrievance.title);
+  const cleanLab = sanitizeRoomOrCode(publishData.lab || 'ECE Department Facility');
+
   const publicPayload = {
-    title: (publishData.title || sourceGrievance.title).trim(),
-    description: (publishData.description || sourceGrievance.title).trim(),
+    title: cleanTitle,
+    description: cleanDesc,
     category: publishData.category || (sourceGrievance.category === 'academics' ? 'academics' : 'facility'),
-    lab: publishData.lab || 'ECE Department Facility',
+    lab: cleanLab,
     equipmentCode: 'GENERAL-ASSET',
     urgency: sourceGrievance.urgency || 'normal',
     stage: sourceGrievance.stage || 'in_progress',
@@ -1459,8 +1234,7 @@ export async function publishPrivateGrievanceToPublic(grievanceId, publishData, 
       });
     } catch (_) {}
     return { id: pubDocRef.id, ...publicPayload };
-  } catch (err) {
-    console.warn('Firestore publish notice, safely retained in local cache:', err);
+  } catch (_) {
     return localPubIssue;
   }
 }

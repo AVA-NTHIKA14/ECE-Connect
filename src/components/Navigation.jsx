@@ -10,6 +10,7 @@ import {
   User
 } from 'lucide-react';
 import { DEPARTMENT_INFO } from '../data/mockData';
+import { isRepresentativeUser } from '../services/auth';
 
 export default function Navigation({
   activeTab,
@@ -21,7 +22,7 @@ export default function Navigation({
   publicIssuesCount = 0,
   confidentialCount = 0
 }) {
-  const isRep = currentUser?.role === 'representative';
+  const isRep = isRepresentativeUser(currentUser);
 
   return (
     <header className="sticky top-0 z-40 w-full border-b border-slate-200 bg-white/95 backdrop-blur-md">
@@ -36,7 +37,7 @@ export default function Navigation({
           <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-slate-50 border border-slate-200 p-1 flex items-center justify-center overflow-hidden transition-all duration-200 group-hover:border-teal-500 shadow-xs">
             <img
               src="/logo.png"
-              alt="GECP Logo"
+              alt="Government Engineering College Sreekrishnapuram Palakkad Institutional Crest and Department of Electronics & Communication Engineering Logo"
               className="w-full h-full object-contain"
             />
           </div>
@@ -56,11 +57,15 @@ export default function Navigation({
         </div>
 
         {/* Central Navigation Tabs (Desktop) */}
-        <nav className="hidden md:flex items-center p-1 bg-slate-100/90 border border-slate-200/90 rounded-full text-[13px] shrink-0">
+        <nav
+          aria-label="Department Navigation"
+          className="hidden md:flex items-center p-1 bg-slate-100/90 border border-slate-200/90 rounded-full text-[13px] shrink-0"
+        >
           {/* Community Complaint Wall */}
           <button
             onClick={() => setActiveTab('public')}
-            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full font-semibold whitespace-nowrap transition-all duration-150 ${
+            aria-current={activeTab === 'public' ? 'page' : undefined}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full font-semibold whitespace-nowrap transition-all duration-150 focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:outline-none ${
               activeTab === 'public'
                 ? 'bg-white text-navy-900 shadow-sm'
                 : 'text-slate-600 hover:text-navy-900'
@@ -83,7 +88,8 @@ export default function Navigation({
           {currentUser && (
             <button
               onClick={() => setActiveTab('my_complaints')}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full font-semibold whitespace-nowrap transition-all duration-150 ${
+              aria-current={activeTab === 'my_complaints' ? 'page' : undefined}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full font-semibold whitespace-nowrap transition-all duration-150 focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:outline-none ${
                 activeTab === 'my_complaints'
                   ? 'bg-white text-navy-900 shadow-sm'
                   : 'text-slate-600 hover:text-navy-900'
@@ -97,7 +103,8 @@ export default function Navigation({
           {/* Confidential Vault */}
           <button
             onClick={() => setActiveTab('confidential')}
-            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full font-semibold whitespace-nowrap transition-all duration-150 ${
+            aria-current={activeTab === 'confidential' ? 'page' : undefined}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full font-semibold whitespace-nowrap transition-all duration-150 focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:outline-none ${
               activeTab === 'confidential'
                 ? 'bg-white text-navy-900 shadow-sm'
                 : 'text-slate-600 hover:text-navy-900'
@@ -121,7 +128,8 @@ export default function Navigation({
           {/* Archive */}
           <button
             onClick={() => setActiveTab('archive')}
-            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full font-semibold whitespace-nowrap transition-all duration-150 ${
+            aria-current={activeTab === 'archive' ? 'page' : undefined}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full font-semibold whitespace-nowrap transition-all duration-150 focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:outline-none ${
               activeTab === 'archive'
                 ? 'bg-white text-navy-900 shadow-sm'
                 : 'text-slate-600 hover:text-navy-900'
@@ -135,7 +143,8 @@ export default function Navigation({
           {isRep && (
             <button
               onClick={() => setActiveTab('operations')}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full font-semibold whitespace-nowrap transition-all duration-150 ${
+              aria-current={activeTab === 'operations' ? 'page' : undefined}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full font-semibold whitespace-nowrap transition-all duration-150 focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:outline-none ${
                 activeTab === 'operations'
                   ? 'bg-navy-900 text-white shadow-sm'
                   : 'text-navy-900 hover:bg-slate-200'
@@ -155,25 +164,25 @@ export default function Navigation({
               {/* User Identity */}
               <div className="hidden sm:flex flex-col text-right">
                 <div className="text-[14px] font-bold text-navy-900 flex items-center justify-end gap-1">
-                  {currentUser.role === 'representative' && (
+                  {isRep && (
                     <ShieldCheck className="w-4 h-4 text-teal-600" />
                   )}
                   {currentUser.displayName || currentUser.rollNumber}
                 </div>
                 <div className="text-[12px] text-slate-500 font-mono">
-                  {currentUser.role === 'representative' ? 'Official Representative' : currentUser.email}
+                  {isRep ? 'ECE Representative (Official)' : currentUser.email}
                 </div>
               </div>
 
               {/* Status Badge */}
               <div
                 className={`px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-[11px] font-mono font-bold whitespace-nowrap ${
-                  currentUser.role === 'representative'
+                  isRep
                     ? 'bg-navy-900 text-white'
                     : 'bg-teal-50 border border-teal-200 text-teal-900'
                 }`}
               >
-                {currentUser.role === 'representative' ? (
+                {isRep ? (
                   'REP'
                 ) : (
                   <span>
@@ -207,10 +216,14 @@ export default function Navigation({
       </div>
 
       {/* Mobile Sub-Navigation Bar with Lucide Icons */}
-      <div className="flex md:hidden overflow-x-auto border-t border-slate-200 px-2 py-1.5 gap-1.5 bg-slate-50 text-[12px] no-scrollbar">
+      <nav
+        aria-label="Mobile Navigation"
+        className="flex md:hidden overflow-x-auto border-t border-slate-200 px-2 py-1.5 gap-1.5 bg-slate-50 text-[12px] no-scrollbar"
+      >
         <button
           onClick={() => setActiveTab('public')}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg whitespace-nowrap font-semibold transition-all ${
+          aria-current={activeTab === 'public' ? 'page' : undefined}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg whitespace-nowrap font-semibold transition-all focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:outline-none ${
             activeTab === 'public'
               ? 'bg-white text-navy-900 shadow-xs border border-slate-200'
               : 'text-slate-600 hover:text-navy-900'
@@ -226,7 +239,8 @@ export default function Navigation({
         {currentUser && (
           <button
             onClick={() => setActiveTab('my_complaints')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg whitespace-nowrap font-semibold transition-all ${
+            aria-current={activeTab === 'my_complaints' ? 'page' : undefined}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg whitespace-nowrap font-semibold transition-all focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:outline-none ${
               activeTab === 'my_complaints'
                 ? 'bg-white text-navy-900 shadow-xs border border-slate-200'
                 : 'text-slate-600 hover:text-navy-900'
@@ -239,7 +253,8 @@ export default function Navigation({
 
         <button
           onClick={() => setActiveTab('confidential')}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg whitespace-nowrap font-semibold transition-all ${
+          aria-current={activeTab === 'confidential' ? 'page' : undefined}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg whitespace-nowrap font-semibold transition-all focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:outline-none ${
             activeTab === 'confidential'
               ? 'bg-white text-navy-900 shadow-xs border border-slate-200'
               : 'text-slate-600 hover:text-navy-900'
@@ -256,7 +271,8 @@ export default function Navigation({
 
         <button
           onClick={() => setActiveTab('archive')}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg whitespace-nowrap font-semibold transition-all ${
+          aria-current={activeTab === 'archive' ? 'page' : undefined}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg whitespace-nowrap font-semibold transition-all focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:outline-none ${
             activeTab === 'archive'
               ? 'bg-white text-navy-900 shadow-xs border border-slate-200'
               : 'text-slate-600 hover:text-navy-900'
@@ -269,7 +285,8 @@ export default function Navigation({
         {isRep && (
           <button
             onClick={() => setActiveTab('operations')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg whitespace-nowrap font-semibold transition-all ${
+            aria-current={activeTab === 'operations' ? 'page' : undefined}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg whitespace-nowrap font-semibold transition-all focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:outline-none ${
               activeTab === 'operations'
                 ? 'bg-navy-900 text-white shadow-xs'
                 : 'text-navy-900 hover:bg-slate-200'
@@ -279,7 +296,7 @@ export default function Navigation({
             <span>Rep Desk</span>
           </button>
         )}
-      </div>
+      </nav>
     </header>
   );
 }

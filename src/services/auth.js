@@ -13,7 +13,6 @@ import { auth, db, isFirebaseConfigured } from './firebase.js';
 
 // Configurable student email regex pattern
 // Default institutional student pattern:
-// Covers:
 // S7 (2023): pkd23ec001@gecskp.ac.in to pkd23ec075@gecskp.ac.in
 // S5 (2024): pkd24ec001@gecskp.ac.in to pkd24ec075@gecskp.ac.in
 // S3 (2025): pkd25ec001@gecskp.ac.in to pkd25ec075@gecskp.ac.in
@@ -30,8 +29,9 @@ export const STUDENT_EMAIL_REGEX = sanitizedEnvRegex
   : /^pkd(2[3-6]|2x)ec0(0[1-9]|[1-6][0-9]|7[0-5])@gecskp\.ac\.in$/i;
 
 // Official representative and departmental emails
+export const OFFICIAL_REPRESENTATIVE_EMAIL = 'ece.rep@gecskp.ac.in';
 export const OFFICIAL_STAFF_EMAILS = [
-  'ece.rep@gecskp.ac.in',
+  OFFICIAL_REPRESENTATIVE_EMAIL,
   'hod.ece@gecskp.ac.in',
   'staff.ece@gecskp.ac.in'
 ];
@@ -46,15 +46,19 @@ export function normalizeEmail(email) {
 
 /**
  * Validates whether an email matches the exact institutional student naming pattern.
- * Allowed:
- *  - pkd23ec001 to pkd23ec075 (S7)
- *  - pkd24ec001 to pkd24ec075 (S5)
- *  - pkd25ec001 to pkd25ec075 (S3)
- *  - pkd26ec001 to pkd26ec075 (S1)
  */
 export function validateStudentEmail(email) {
   const normalized = normalizeEmail(email);
   return STUDENT_EMAIL_REGEX.test(normalized);
+}
+
+/**
+ * Strictly verifies whether a user holds authorized ECE Department Representative credentials.
+ */
+export function isRepresentativeUser(user) {
+  if (!user) return false;
+  const email = normalizeEmail(user.email);
+  return user.role === 'representative' && (email === OFFICIAL_REPRESENTATIVE_EMAIL || email === 'hod.ece@gecskp.ac.in');
 }
 
 /**
@@ -102,7 +106,6 @@ export function isValidInstitutionalEmail(email) {
 
 /**
  * Extracts student roll number from standardized email.
- * E.g. pkd23ec045@gecskp.ac.in -> PKD23EC045
  */
 export function extractRollNumber(email) {
   const normalized = normalizeEmail(email);
@@ -111,41 +114,15 @@ export function extractRollNumber(email) {
 }
 
 /**
- * Fetch role for authenticated user from Firestore /roles/{uid} or /users/{uid}.
+ * Fetch role for authenticated user.
+ * Strictly assigns 'representative' ONLY to the verified representative email.
  */
 export async function fetchUserRole(uid, email) {
   const normalized = normalizeEmail(email);
-  if (!db) {
-    if (OFFICIAL_STAFF_EMAILS.includes(normalized)) return 'representative';
-    return 'student';
+  if (normalized === OFFICIAL_REPRESENTATIVE_EMAIL) {
+    return 'representative';
   }
-
-  try {
-    // 1. Check secure role registry: /roles/{uid}
-    const roleDocRef = doc(db, 'roles', uid);
-    const roleSnap = await getDoc(roleDocRef);
-    if (roleSnap.exists()) {
-      return roleSnap.data().role || 'student';
-    }
-
-    // 2. Fallback check for designated staff emails during bootstrap
-    if (OFFICIAL_STAFF_EMAILS.includes(normalized)) {
-      return 'representative';
-    }
-
-    // 3. Check user profile doc: /users/{uid}
-    const userDocRef = doc(db, 'users', uid);
-    const userSnap = await getDoc(userDocRef);
-    if (userSnap.exists() && userSnap.data().role) {
-      return userSnap.data().role;
-    }
-
-    return 'student';
-  } catch (error) {
-    console.error('Error fetching user role:', error);
-    if (OFFICIAL_STAFF_EMAILS.includes(normalized)) return 'representative';
-    return 'student';
-  }
+  return 'student';
 }
 
 /**
@@ -158,7 +135,11 @@ export async function signUpStudent(email, password, fullName) {
     throw new Error('Only official Government Engineering College Sreekrishnapuram Palakkad (GECP) institutional accounts (@gecskp.ac.in) are allowed.');
   }
 
-  if (!validateStudentEmail(normalized) && !OFFICIAL_STAFF_EMAILS.includes(normalized)) {
+  if (normalized === OFFICIAL_REPRESENTATIVE_EMAIL) {
+    throw new Error('The official representative account is managed by department administration. Please use the Representative Portal to sign in.');
+  }
+
+  if (!validateStudentEmail(normalized)) {
     throw new Error(
       'Invalid Student Email format. Email must match an authorized ECE batch: pkd23ec001-pkd23ec075 (S7), pkd24ec001-pkd24ec075 (S5), pkd25ec001-pkd25ec075 (S3), or pkd26ec001-pkd26ec075 (S1) @gecskp.ac.in.'
     );
@@ -180,25 +161,24 @@ export async function signUpStudent(email, password, fullName) {
   // Send email verification
   try {
     await sendEmailVerification(user);
-  } catch (verifyErr) {
-    console.warn('Verification email dispatch failed:', verifyErr);
+  } catch (_) {
+    // Non-blocking verification notification
   }
 
   // Create initial user document in Firestore
   if (db) {
     try {
-      const isRep = OFFICIAL_STAFF_EMAILS.includes(normalized);
       await setDoc(doc(db, 'users', user.uid), {
         email: normalized,
         displayName,
         rollNumber,
         semester: batchInfo?.semester || null,
         batchYear: batchInfo?.batchYear || null,
-        role: isRep ? 'representative' : 'student',
+        role: 'student',
         createdAt: new Date().toISOString()
       }, { merge: true });
-    } catch (dbErr) {
-      console.error('Failed to create user record in Firestore:', dbErr);
+    } catch (_) {
+      // Non-blocking firestore profile cache
     }
   }
 
@@ -206,7 +186,7 @@ export async function signUpStudent(email, password, fullName) {
 }
 
 /**
- * Sign in existing user with institutional email and password.
+ * Sign in student with institutional roll number email and password.
  */
 export async function signInUser(email, password) {
   const normalized = normalizeEmail(email);
@@ -215,12 +195,104 @@ export async function signInUser(email, password) {
     throw new Error('Access is restricted to official Government Engineering College Sreekrishnapuram Palakkad (GECP) accounts (@gecskp.ac.in).');
   }
 
+  if (normalized === OFFICIAL_REPRESENTATIVE_EMAIL) {
+    throw new Error('Representative Account: Please switch to the "Representative Portal" tab to authenticate with your representative passkey.');
+  }
+
+  if (!validateStudentEmail(normalized)) {
+    throw new Error('Invalid Student ID format. Roll email must match an active ECE batch (e.g. pkd24ec023@gecskp.ac.in).');
+  }
+
   if (!isFirebaseConfigured || !auth) {
-    throw new Error('Firebase credentials are not configured. Please supply .env values.');
+    // Offline / Demo student fallback session
+    const roll = extractRollNumber(normalized);
+    const batchInfo = getStudentBatchInfo(normalized);
+    const studentUser = {
+      uid: `local_student_${roll.toLowerCase()}`,
+      email: normalized,
+      displayName: `Student ${roll}`,
+      rollNumber: roll,
+      semester: batchInfo?.semester || null,
+      semesterLabel: batchInfo?.label || null,
+      batchYear: batchInfo?.batchYear || null,
+      role: 'student',
+      emailVerified: true
+    };
+    setStoredUser(studentUser);
+    customAuthListeners.forEach((cb) => cb(studentUser));
+    return studentUser;
   }
 
   const userCredential = await signInWithEmailAndPassword(auth, normalized, password);
   return userCredential.user;
+}
+
+/**
+ * Secure Authentication for Department Representative.
+ * Strictly restricts access to ece.rep@gecskp.ac.in with valid passkey/password.
+ * Student accounts are categorically rejected.
+ */
+export async function signInAsRepresentative(email, passkey) {
+  const normalized = normalizeEmail(email);
+
+  if (normalized !== OFFICIAL_REPRESENTATIVE_EMAIL) {
+    throw new Error(
+      `Access Denied: Only the official ECE Department Representative (${OFFICIAL_REPRESENTATIVE_EMAIL}) is authorized to enter this portal. Student accounts must use the Student Portal.`
+    );
+  }
+
+  if (!passkey || !passkey.trim()) {
+    throw new Error('Representative Security Passkey is required.');
+  }
+
+  const envPasskey = typeof import.meta !== 'undefined' && import.meta.env?.VITE_REP_PASSKEY
+    ? import.meta.env.VITE_REP_PASSKEY.trim()
+    : '';
+
+  if (!envPasskey) {
+    throw new Error('Representative passkey is not configured in environment variables.');
+  }
+
+  const trimmed = passkey.trim();
+
+  let authUser = null;
+  if (isFirebaseConfigured && auth) {
+    try {
+      const cred = await signInWithEmailAndPassword(auth, normalized, trimmed);
+      authUser = cred.user;
+    } catch (firebaseErr) {
+      if (firebaseErr.code === 'auth/user-not-found' && trimmed === envPasskey) {
+        try {
+          const newCred = await createUserWithEmailAndPassword(auth, normalized, trimmed);
+          await updateProfile(newCred.user, { displayName: 'ECE Association Representative' });
+          authUser = newCred.user;
+        } catch (_) {}
+      } else if (trimmed !== envPasskey) {
+        throw new Error('Invalid Representative Security Passkey or Password. Access denied.');
+      }
+    }
+  } else {
+    if (trimmed !== envPasskey) {
+      throw new Error('Invalid Representative Security Passkey. Access denied.');
+    }
+  }
+
+  const repUser = {
+    uid: authUser?.uid || 'rep_gecskp_association_officer',
+    email: OFFICIAL_REPRESENTATIVE_EMAIL,
+    displayName: 'ECE Association Representative',
+    rollNumber: 'ECE-REP',
+    semester: 'S7',
+    semesterLabel: 'Semester 7 (Final Year)',
+    batchYear: '2023–2027',
+    role: 'representative',
+    emailVerified: true,
+    rawUser: authUser
+  };
+
+  setStoredUser(repUser);
+  customAuthListeners.forEach((cb) => cb(repUser));
+  return repUser;
 }
 
 /**
@@ -269,28 +341,7 @@ function setStoredUser(user) {
 const customAuthListeners = new Set();
 
 /**
- * 1-Click Fast Ingress / Demo Sign In as the Department Representative.
- * Sets official ece.rep@gecskp.ac.in session with role: representative.
- */
-export function signInAsRepDemo() {
-  const repUser = {
-    uid: 'rep_gecskp_association_officer',
-    email: 'ece.rep@gecskp.ac.in',
-    displayName: 'ECE Association Representative',
-    rollNumber: 'ECE-REP',
-    semester: 'S7',
-    semesterLabel: 'Semester 7 (Final Year)',
-    batchYear: '2023–2027',
-    role: 'representative',
-    emailVerified: true
-  };
-  setStoredUser(repUser);
-  customAuthListeners.forEach((cb) => cb(repUser));
-  return repUser;
-}
-
-/**
- * Sign out user.
+ * Sign out user and wipe cached session.
  */
 export async function signOutUser() {
   setStoredUser(null);
@@ -303,12 +354,12 @@ export async function signOutUser() {
 }
 
 /**
- * Subscribe to Firebase auth state changes with session persistence.
+ * Subscribe to auth state changes with session persistence and strict role assignment.
  */
 export function onAuthChange(callback) {
   customAuthListeners.add(callback);
 
-  // If a stored demo session exists, notify listener immediately
+  // If a stored session exists, notify listener immediately
   const stored = getStoredUser();
   if (stored) {
     callback(stored);
@@ -332,29 +383,29 @@ export function onAuthChange(callback) {
       const enhancedUser = {
         uid: user.uid,
         email: user.email,
-        displayName: user.displayName || extractRollNumber(user.email),
-        rollNumber: extractRollNumber(user.email),
-        semester: batchInfo?.semester || null,
-        semesterLabel: batchInfo?.label || null,
-        batchYear: batchInfo?.batchYear || null,
+        displayName: user.displayName || (role === 'representative' ? 'ECE Association Representative' : extractRollNumber(user.email)),
+        rollNumber: role === 'representative' ? 'ECE-REP' : extractRollNumber(user.email),
+        semester: batchInfo?.semester || (role === 'representative' ? 'S7' : null),
+        semesterLabel: batchInfo?.label || (role === 'representative' ? 'Semester 7 (Final Year)' : null),
+        batchYear: batchInfo?.batchYear || (role === 'representative' ? '2023–2027' : null),
         role,
         emailVerified: user.emailVerified,
         rawUser: user
       };
       setStoredUser(enhancedUser);
       callback(enhancedUser);
-    } catch (err) {
-      console.error('Error enriching user session:', err);
+    } catch (_) {
+      const isRep = normalizeEmail(user.email) === OFFICIAL_REPRESENTATIVE_EMAIL;
       const batchInfo = getStudentBatchInfo(user.email);
       const fallbackUser = {
         uid: user.uid,
         email: user.email,
-        displayName: user.displayName || extractRollNumber(user.email),
-        rollNumber: extractRollNumber(user.email),
+        displayName: user.displayName || (isRep ? 'ECE Association Representative' : extractRollNumber(user.email)),
+        rollNumber: isRep ? 'ECE-REP' : extractRollNumber(user.email),
         semester: batchInfo?.semester || null,
         semesterLabel: batchInfo?.label || null,
         batchYear: batchInfo?.batchYear || null,
-        role: OFFICIAL_STAFF_EMAILS.includes(user.email?.toLowerCase()) ? 'representative' : 'student',
+        role: isRep ? 'representative' : 'student',
         emailVerified: user.emailVerified,
         rawUser: user
       };

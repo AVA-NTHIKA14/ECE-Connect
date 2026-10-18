@@ -19,18 +19,20 @@ export default function ResolvedArchive({
 }) {
   const [archivedIssues, setArchivedIssues] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedIssue, setSelectedIssue] = useState(null);
 
   useEffect(() => {
     setIsLoading(true);
+    setErrorMessage(null);
     const unsubscribe = subscribeArchivedIssues(
       (data) => {
         setArchivedIssues(data);
         setIsLoading(false);
       },
-      (err) => {
-        console.error('Error fetching archived issues:', err);
+      () => {
+        setErrorMessage('Unable to load archived records at this time. Please try refreshing or check back later.');
         setIsLoading(false);
       }
     );
@@ -47,7 +49,7 @@ export default function ResolvedArchive({
   );
 
   return (
-    <div className="space-y-6 text-left">
+    <section aria-labelledby="archive-heading" className="space-y-6 text-left">
       {/* Header */}
       <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 shadow-sm">
         <div className="space-y-3 max-w-2xl">
@@ -56,13 +58,11 @@ export default function ResolvedArchive({
             <span>Permanent Department Repository</span>
           </div>
 
-          {/* Desktop Main Heading: 36-44px */}
-          <h1 className="text-3xl sm:text-[38px] font-extrabold tracking-tight text-navy-900 leading-tight">
+          <h1 id="archive-heading" className="text-3xl sm:text-[38px] font-extrabold tracking-tight text-navy-900 leading-tight">
             Resolved Issues Archive
           </h1>
 
-          {/* Body Text: 15-16px */}
-          <p className="text-[15px] sm:text-[16px] text-slate-700 font-normal leading-relaxed">
+          <p className="text-base text-slate-700 font-normal leading-relaxed">
             Historical repository of verified and closed grievances at GECP. Issues here have been formally resolved, inspected by lab superintendents, and certified closed by the ECE Association representative.
           </p>
         </div>
@@ -89,31 +89,42 @@ export default function ResolvedArchive({
       {/* Search Bar */}
       <div className="bg-white border border-slate-200 rounded-xl p-3.5 sm:p-4 flex items-center justify-between shadow-sm">
         <div className="relative flex-1">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
+          <label htmlFor="archive-search" className="sr-only">
+            Search archived issues by keyword, equipment code, or lab
+          </label>
+          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" aria-hidden="true" />
           <input
+            id="archive-search"
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Search archived issues by keyword, equipment code, or lab..."
-            className="w-full bg-slate-50 border border-slate-200 focus:bg-white focus:border-teal-600 rounded-lg pl-9 pr-4 py-2 text-[14px] text-navy-900 placeholder-slate-400 outline-none"
+            className="w-full bg-slate-50 border border-slate-200 focus:bg-white focus:border-teal-600 rounded-lg pl-9 pr-4 py-2 text-base text-navy-900 placeholder-slate-400 outline-none"
           />
         </div>
       </div>
 
+      {/* Error state */}
+      {errorMessage && (
+        <div role="alert" className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-sm">
+          {errorMessage}
+        </div>
+      )}
+
       {/* Loading state */}
       {isLoading && (
-        <div className="p-12 text-center bg-white border border-slate-200 rounded-2xl space-y-3">
+        <div className="p-12 text-center bg-white border border-slate-200 rounded-2xl space-y-3" role="status">
           <Loader2 className="w-8 h-8 text-teal-600 animate-spin mx-auto" />
-          <div className="text-[16px] font-semibold text-navy-900">Loading Archived Records...</div>
+          <div className="text-base font-semibold text-navy-900">Loading Archived Records...</div>
         </div>
       )}
 
       {/* Grid of Archived Cards */}
-      {!isLoading && (
+      {!isLoading && !errorMessage && (
         filtered.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {filtered.map((issue) => (
-              <div
+              <article
                 key={issue.id}
                 className="noticeboard-card p-6 border border-slate-200 flex flex-col justify-between group transition-all"
               >
@@ -134,7 +145,7 @@ export default function ResolvedArchive({
                     {issue.title}
                   </h3>
 
-                  <p className="text-[15px] text-slate-700 leading-relaxed font-normal mb-4 line-clamp-2">
+                  <p className="text-base text-slate-700 leading-relaxed font-normal mb-4 line-clamp-2">
                     {issue.description}
                   </p>
 
@@ -145,7 +156,7 @@ export default function ResolvedArchive({
                         <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                         Formal Resolution Log
                       </div>
-                      <p className="line-clamp-2 text-[13px] leading-relaxed">
+                      <p className="line-clamp-2 text-sm leading-relaxed">
                         {issue.resolutionNotes}
                       </p>
                     </div>
@@ -164,7 +175,7 @@ export default function ResolvedArchive({
                     <span>View Record</span>
                   </button>
                 </div>
-              </div>
+              </article>
             ))}
           </div>
         ) : (
@@ -173,7 +184,7 @@ export default function ResolvedArchive({
             <h4 className="text-[18px] font-bold text-navy-900">
               No Archived Issues Found
             </h4>
-            <p className="text-[14px] text-slate-500 max-w-sm mx-auto font-normal">
+            <p className="text-sm text-slate-500 max-w-sm mx-auto font-normal">
               Closed issues will automatically move here once certified and closed by the student representative.
             </p>
           </div>
@@ -192,6 +203,6 @@ export default function ResolvedArchive({
           onOpenAuth={onOpenAuth}
         />
       )}
-    </div>
+    </section>
   );
 }
