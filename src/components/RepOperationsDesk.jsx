@@ -10,9 +10,26 @@ import {
   Building2,
   Archive,
   MessageSquare,
-  X
+  X,
+  Search,
+  Globe,
+  Lock,
+  EyeOff,
+  UserCheck,
+  Share2,
+  ArrowRight,
+  Eye,
+  Check,
+  Filter
 } from 'lucide-react';
-import { updateIssueStage, closeIssueWithToken } from '../services/db';
+import {
+  updateIssueStage,
+  closeIssueWithToken,
+  updatePrivateGrievanceStage,
+  closePrivateGrievanceWithToken,
+  publishPrivateGrievanceToPublic
+} from '../services/db';
+import { LAB_FACILITIES } from '../data/mockData';
 
 export default function RepOperationsDesk({
   issues = [],
@@ -20,18 +37,37 @@ export default function RepOperationsDesk({
   currentUser,
   onSelectVaultToReply
 }) {
-  const [activeSubTab, setActiveSubTab] = useState('triage'); // 'triage' | 'vaults'
-  const [selectedIssue, setSelectedIssue] = useState(null);
+  // Master queue view: 'all' | 'public' | 'vaults'
+  const [activeSubTab, setActiveSubTab] = useState('all');
 
-  // Status edit modal state
+  // Search and multi-dimensional filters
+  const [searchQuery, setSearchQuery] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [stageFilter, setStageFilter] = useState('all');
+  const [urgencyFilter, setUrgencyFilter] = useState('all');
+  const [visibilityFilter, setVisibilityFilter] = useState('all'); // 'all' | 'public' | 'private'
+
+  // Selected item for modals
+  const [selectedItem, setSelectedItem] = useState(null);
+
+  // Status/Stage edit modal state
   const [isEditingStatus, setIsEditingStatus] = useState(false);
   const [newStage, setNewStage] = useState('in_progress');
   const [resolutionNote, setResolutionNote] = useState('');
   const [targetFixDate, setTargetFixDate] = useState('');
 
-  // Close Issue Modal state
+  // Close Ticket Modal state
   const [isClosingIssue, setIsClosingIssue] = useState(false);
   const [closeResolutionNote, setCloseResolutionNote] = useState('');
+
+  // Mark to View Public (Publish to Wall) Modal state
+  const [isPublishModalOpen, setIsPublishModalOpen] = useState(false);
+  const [publishTitle, setPublishTitle] = useState('');
+  const [publishDescription, setPublishDescription] = useState('');
+  const [publishCategory, setPublishCategory] = useState('facility');
+  const [publishLab, setPublishLab] = useState(LAB_FACILITIES[0]?.name || 'EC 1st Year Class');
+
+  // Operation state & feedback
   const [isOperating, setIsOperating] = useState(false);
   const [opError, setOpError] = useState(null);
   const [opSuccess, setOpSuccess] = useState(null);
@@ -39,36 +75,104 @@ export default function RepOperationsDesk({
   // Requisition Indent Simulation Toast
   const [indentToast, setIndentToast] = useState(null);
 
-  // Rep Filters
-  const [categoryFilter, setCategoryFilter] = useState('all');
-  const [stageFilter, setStageFilter] = useState('all');
+  // Consolidated Unified Queue
+  const allItems = [
+    ...issues.map((i) => ({
+      ...i,
+      itemType: 'public',
+      displayAuthor: i.studentName || 'ECE Student',
+      displayRoll: i.authorEmail?.split('@')[0]?.toUpperCase() || 'STUDENT',
+      isAnon: Boolean(i.hideIdentity || i.studentName?.includes('Anonymous')),
+      locationOrTopic: i.lab || 'ECE Facility',
+      engagementCount: i.upvotesCount || 0,
+      engagementType: 'votes'
+    })),
+    ...vaults.map((v) => ({
+      ...v,
+      itemType: 'private',
+      displayAuthor: v.isAnonymous ? 'Anonymous Student' : (v.authorName || v.subjectRoll || 'Student'),
+      displayRoll: v.isAnonymous ? 'CONFIDENTIAL' : (v.subjectRoll || 'STUDENT'),
+      isAnon: Boolean(v.isAnonymous),
+      locationOrTopic: v.category ? v.category.toUpperCase() : 'WELFARE',
+      engagementCount: v.messagesCount || 1,
+      engagementType: 'messages'
+    }))
+  ].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 
-  const filteredIssues = issues.filter((issue) => {
-    const matchesCat = categoryFilter === 'all' || issue.category === categoryFilter;
-    const matchesStage = stageFilter === 'all' || issue.stage === stageFilter;
-    return matchesCat && matchesStage;
+  // Filtered List based on tab and filter controls
+  const filteredItems = allItems.filter((item) => {
+    // 1. Tab filter
+    if (activeSubTab === 'public' && item.itemType !== 'public') return false;
+    if (activeSubTab === 'vaults' && item.itemType !== 'private') return false;
+
+    // 2. Visibility filter (within 'all' tab)
+    if (visibilityFilter === 'public' && item.itemType !== 'public') return false;
+    if (visibilityFilter === 'private' && item.itemType !== 'private') return false;
+
+    // 3. Category filter
+    if (categoryFilter !== 'all' && item.category !== categoryFilter) return false;
+
+    // 4. Stage filter
+    if (stageFilter !== 'all') {
+      const currentStage = item.stage || (item.isClosed ? 'closed' : 'reported');
+      if (currentStage !== stageFilter) return false;
+    }
+
+    // 5. Urgency filter
+    if (urgencyFilter !== 'all' && item.urgency !== urgencyFilter) return false;
+
+    // 6. Search query
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      const matchTitle = item.title?.toLowerCase().includes(q);
+      const matchDesc = (item.description || item.initialMessage || '').toLowerCase().includes(q);
+      const matchAuthor = item.displayAuthor?.toLowerCase().includes(q);
+      const matchRoll = item.displayRoll?.toLowerCase().includes(q);
+      const matchLoc = item.locationOrTopic?.toLowerCase().includes(q);
+      const matchId = item.id?.toLowerCase().includes(q);
+      if (!matchTitle && !matchDesc && !matchAuthor && !matchRoll && !matchLoc && !matchId) {
+        return false;
+      }
+    }
+
+    return true;
   });
 
-  const activeIssuesCount = issues.filter((i) => !i.isClosed).length;
-  const criticalCount = issues.filter((i) => (i.urgency === 'critical' || i.urgency === 'elevated') && !i.isClosed).length;
+  // Global Metrics
+  const totalIssuesCount = allItems.length;
+  const activePipelineCount = allItems.filter((i) => !i.isClosed).length;
+  const criticalCount = allItems.filter((i) => (i.urgency === 'critical' || i.urgency === 'elevated') && !i.isClosed).length;
+  const closedCount = allItems.filter((i) => i.isClosed).length;
+  const publicCount = issues.length;
+  const privateCount = vaults.length;
 
-  const handleOpenEdit = (issue) => {
-    setSelectedIssue(issue);
-    setNewStage(issue.stage || 'in_progress');
-    setResolutionNote(issue.resolutionNotes || '');
-    setTargetFixDate(issue.targetFixDate || '');
+  // --- ACTIONS ---
+
+  // 1. Open Stage Progression Modal
+  const handleOpenEdit = (item) => {
+    setSelectedItem(item);
+    setNewStage(item.stage || 'in_progress');
+    setResolutionNote(item.resolutionNotes || '');
+    setTargetFixDate(item.targetFixDate || '');
     setOpError(null);
     setIsEditingStatus(true);
   };
 
+  // Save Stage Progression
   const handleSaveStatus = async (e) => {
     e.preventDefault();
-    if (!selectedIssue) return;
+    if (!selectedItem) return;
 
     try {
       setIsOperating(true);
       setOpError(null);
-      await updateIssueStage(selectedIssue.id, newStage, resolutionNote, targetFixDate, currentUser);
+
+      if (selectedItem.itemType === 'public') {
+        await updateIssueStage(selectedItem.id, newStage, resolutionNote, targetFixDate, currentUser);
+      } else {
+        await updatePrivateGrievanceStage(selectedItem.id, newStage, resolutionNote, targetFixDate, currentUser);
+      }
+
       setOpSuccess(`Status successfully progressed to ${newStage.replace('_', ' ')}.`);
       setTimeout(() => setOpSuccess(null), 4000);
       setIsEditingStatus(false);
@@ -80,43 +184,100 @@ export default function RepOperationsDesk({
     }
   };
 
-  const handleOpenCloseModal = (issue) => {
-    setSelectedIssue(issue);
-    setCloseResolutionNote(issue.resolutionNotes || '');
+  // 2. Open Close Ticket Modal
+  const handleOpenCloseModal = (item) => {
+    setSelectedItem(item);
+    setCloseResolutionNote(item.resolutionNotes || '');
     setOpError(null);
     setIsClosingIssue(true);
   };
 
+  // Confirm Close Ticket with Token
   const handleConfirmClose = async (e) => {
     e.preventDefault();
-    if (!selectedIssue) return;
+    if (!selectedItem) return;
 
     if (!closeResolutionNote.trim()) {
-      setOpError('Resolution notes are required before issuing the official CLOSED stamp.');
+      setOpError('Resolution log notes are required before applying the official CLOSED stamp.');
       return;
     }
 
     try {
       setIsOperating(true);
       setOpError(null);
-      await closeIssueWithToken(selectedIssue.id, closeResolutionNote.trim(), currentUser);
-      setOpSuccess(`Issue ${selectedIssue.id} officially closed and transferred to the Resolved Archive.`);
+
+      if (selectedItem.itemType === 'public') {
+        await closeIssueWithToken(selectedItem.id, closeResolutionNote.trim(), currentUser);
+        setOpSuccess(`Public Issue ${selectedItem.id} officially closed and transferred to the Resolved Archive.`);
+      } else {
+        await closePrivateGrievanceWithToken(selectedItem.id, closeResolutionNote.trim(), currentUser);
+        setOpSuccess(`Private Grievance ${selectedItem.id} officially closed and resolution log recorded.`);
+      }
+
       setTimeout(() => setOpSuccess(null), 5000);
       setIsClosingIssue(false);
     } catch (err) {
-      console.error('Error closing issue:', err);
-      setOpError(err.message || 'Failed to close issue.');
+      console.error('Error closing ticket:', err);
+      setOpError(err.message || 'Failed to close ticket.');
     } finally {
       setIsOperating(false);
     }
   };
 
-  const handleGenerateIndent = (issue) => {
+  // 3. Open "Mark to View Public" Modal
+  const handleOpenPublishModal = (item) => {
+    setSelectedItem(item);
+    setPublishTitle(item.title || '');
+    setPublishDescription(item.description || item.initialMessage || item.title || '');
+    setPublishCategory(item.category === 'academics' ? 'academics' : 'facility');
+    setPublishLab(LAB_FACILITIES[0]?.name || 'EC 1st Year Class');
+    setOpError(null);
+    setIsPublishModalOpen(true);
+  };
+
+  // Confirm Mark to View Public
+  const handleConfirmPublish = async (e) => {
+    e.preventDefault();
+    if (!selectedItem) return;
+
+    if (!publishTitle.trim() || !publishDescription.trim()) {
+      setOpError('Title and description are required to publish this issue publicly.');
+      return;
+    }
+
+    try {
+      setIsOperating(true);
+      setOpError(null);
+
+      await publishPrivateGrievanceToPublic(
+        selectedItem.id,
+        {
+          title: publishTitle.trim(),
+          description: publishDescription.trim(),
+          category: publishCategory,
+          lab: publishLab
+        },
+        currentUser
+      );
+
+      setOpSuccess(`Inquiry successfully published to Public Community Wall!`);
+      setTimeout(() => setOpSuccess(null), 5000);
+      setIsPublishModalOpen(false);
+    } catch (err) {
+      console.error('Error publishing issue publicly:', err);
+      setOpError(err.message || 'Failed to publish issue to public wall.');
+    } finally {
+      setIsOperating(false);
+    }
+  };
+
+  // 4. Lab Indent Generator
+  const handleGenerateIndent = (item) => {
     const indentId = `IND-GECP-${Math.floor(1000 + Math.random() * 9000)}`;
     setIndentToast({
       indentId,
-      title: issue.title,
-      lab: issue.lab,
+      title: item.title,
+      lab: item.locationOrTopic || 'ECE Lab',
       recipient: "Lab Superintendent & HoD Dr. Vinod"
     });
     setTimeout(() => setIndentToast(null), 6000);
@@ -130,17 +291,17 @@ export default function RepOperationsDesk({
           <div className="space-y-3 max-w-2xl">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-navy-900 text-white text-[13px] font-semibold">
               <ShieldCheck className="w-4 h-4 text-teal-400" />
-              <span>Representative Operations Desk</span>
+              <span>Department Representative Operations Desk</span>
             </div>
 
-            {/* Desktop Main Heading: 36-44px */}
+            {/* Desktop Main Heading */}
             <h1 className="text-3xl sm:text-[38px] font-extrabold tracking-tight text-navy-900 leading-tight">
-              Department Triage & Action Console
+              Unified Triage & Action Console
             </h1>
 
-            {/* Body Text: 15-16px */}
+            {/* Body Text */}
             <p className="text-[15px] sm:text-[16px] text-slate-700 font-normal leading-relaxed">
-              Official management console for the ECE Student Association Representative. Triage laboratory breakdowns, log resolution progress, issue formal indents, and close verified issues.
+              Consolidated management console for the ECE Student Association Representative. Review all public complaints and private confidential grievances in one queue, update stages, mark issues to view public, and issue official closure stamps.
             </p>
           </div>
 
@@ -153,12 +314,24 @@ export default function RepOperationsDesk({
           </div>
         </div>
 
-        {/* Live Metrics */}
+        {/* Live Metrics Grid */}
         <div className="mt-8 pt-6 border-t border-slate-200 grid grid-cols-2 sm:grid-cols-4 gap-4">
           <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80">
-            <div className="text-[13px] text-slate-500 font-medium">Active Pipeline</div>
+            <div className="text-[13px] text-slate-500 font-medium">All Issues Recorded</div>
             <div className="text-2xl sm:text-[26px] font-bold text-navy-900 tracking-tight mt-1 font-mono">
-              {activeIssuesCount}
+              {totalIssuesCount}
+            </div>
+            <div className="text-[11px] text-slate-400 mt-0.5">
+              {publicCount} Public • {privateCount} Confidential
+            </div>
+          </div>
+          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80">
+            <div className="text-[13px] text-slate-500 font-medium">Active Pipeline</div>
+            <div className="text-2xl sm:text-[26px] font-bold text-teal-700 tracking-tight mt-1 font-mono">
+              {activePipelineCount}
+            </div>
+            <div className="text-[11px] text-slate-400 mt-0.5">
+              Requires triage or fix
             </div>
           </div>
           <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80">
@@ -166,43 +339,66 @@ export default function RepOperationsDesk({
             <div className="text-2xl sm:text-[26px] font-bold text-rose-700 tracking-tight mt-1 font-mono">
               {criticalCount}
             </div>
-          </div>
-          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80">
-            <div className="text-[13px] text-slate-500 font-medium">Confidential Inquiries</div>
-            <div className="text-2xl sm:text-[26px] font-bold text-navy-900 tracking-tight mt-1 font-mono">
-              {vaults.length}
+            <div className="text-[11px] text-slate-400 mt-0.5">
+              High priority cases
             </div>
           </div>
           <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80">
-            <div className="text-[13px] text-slate-500 font-medium">Portal Security</div>
-            <div className="text-2xl sm:text-[26px] font-bold text-teal-700 tracking-tight mt-1 font-mono">
-              Enforced
+            <div className="text-[13px] text-slate-500 font-medium">Formally Closed</div>
+            <div className="text-2xl sm:text-[26px] font-bold text-navy-900 tracking-tight mt-1 font-mono">
+              {closedCount}
+            </div>
+            <div className="text-[11px] text-slate-400 mt-0.5">
+              Archived with tokens
             </div>
           </div>
         </div>
       </div>
 
-      {/* Subtab Navigation */}
-      <div className="flex border-b border-slate-200 text-[13px] font-semibold">
+      {/* Primary Queue Tabs */}
+      <div className="flex border-b border-slate-200 text-[13px] font-semibold gap-1">
         <button
-          onClick={() => setActiveSubTab('triage')}
-          className={`pb-3 px-4 border-b-2 transition-all ${
-            activeSubTab === 'triage'
+          onClick={() => setActiveSubTab('all')}
+          className={`pb-3 px-4 border-b-2 transition-all flex items-center gap-2 ${
+            activeSubTab === 'all'
               ? 'border-teal-600 text-teal-700'
               : 'border-transparent text-slate-500 hover:text-navy-900'
           }`}
         >
-          Public Triage Queue ({issues.length})
+          <span>All Inquiries (Unified Queue)</span>
+          <span className="px-2 py-0.5 rounded-full text-[11px] font-mono bg-slate-100 text-slate-700">
+            {allItems.length}
+          </span>
         </button>
+
+        <button
+          onClick={() => setActiveSubTab('public')}
+          className={`pb-3 px-4 border-b-2 transition-all flex items-center gap-2 ${
+            activeSubTab === 'public'
+              ? 'border-teal-600 text-teal-700'
+              : 'border-transparent text-slate-500 hover:text-navy-900'
+          }`}
+        >
+          <Globe className="w-3.5 h-3.5 text-teal-600" />
+          <span>Public Wall Issues</span>
+          <span className="px-2 py-0.5 rounded-full text-[11px] font-mono bg-slate-100 text-slate-700">
+            {issues.length}
+          </span>
+        </button>
+
         <button
           onClick={() => setActiveSubTab('vaults')}
-          className={`pb-3 px-4 border-b-2 transition-all ${
+          className={`pb-3 px-4 border-b-2 transition-all flex items-center gap-2 ${
             activeSubTab === 'vaults'
               ? 'border-teal-600 text-teal-700'
               : 'border-transparent text-slate-500 hover:text-navy-900'
           }`}
         >
-          Confidential Welfare Responses ({vaults.length})
+          <Lock className="w-3.5 h-3.5 text-navy-900" />
+          <span>Confidential Welfare Grievances</span>
+          <span className="px-2 py-0.5 rounded-full text-[11px] font-mono bg-slate-100 text-slate-700">
+            {vaults.length}
+          </span>
         </button>
       </div>
 
@@ -239,217 +435,337 @@ export default function RepOperationsDesk({
         </div>
       )}
 
-      {/* SUBTAB 1: Public Triage Queue */}
-      {activeSubTab === 'triage' ? (
-        <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-          <div className="p-4 sm:p-5 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
-            <div className="font-bold text-navy-900 text-[15px]">
-              Active Community Wall Complaints
-            </div>
-            <div className="flex items-center gap-2">
-              <select
-                value={categoryFilter}
-                onChange={(e) => setCategoryFilter(e.target.value)}
-                className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-[13px] text-slate-700 outline-none"
-              >
-                <option value="all">All Categories</option>
-                <option value="lab">Laboratories</option>
-                <option value="classroom">Classroom AV</option>
-                <option value="facility">Facilities</option>
-                <option value="academics">Academics</option>
-              </select>
-
-              <select
-                value={stageFilter}
-                onChange={(e) => setStageFilter(e.target.value)}
-                className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-[13px] text-slate-700 outline-none"
-              >
-                <option value="all">All Stages</option>
-                <option value="reported">Reported</option>
-                <option value="acknowledged">Acknowledged</option>
-                <option value="in_progress">In Progress</option>
-                <option value="resolved">Resolved</option>
-              </select>
-            </div>
+      {/* Search & Filter Controls */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-3">
+        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
+          
+          {/* Keyword Search */}
+          <div className="relative flex-1">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search by title, description, case ID, lab/room, or student roll number..."
+              className="w-full bg-slate-50 border border-slate-200 focus:bg-white focus:border-teal-600 rounded-xl pl-9 pr-4 py-2.5 text-[14px] text-navy-900 placeholder-slate-400 outline-none transition-all"
+            />
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[650px] text-left border-collapse">
-              <thead>
-                <tr className="border-b border-slate-200 bg-slate-50 text-slate-500 font-bold uppercase tracking-wider text-[11px]">
-                  <th className="p-4">Case ID</th>
-                  <th className="p-4">Issue Title & Location</th>
-                  <th className="p-4">Urgency</th>
-                  <th className="p-4">Stage</th>
-                  <th className="p-4">+1 Votes</th>
-                  <th className="p-4 text-right">Rep Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-[13px]">
-                {filteredIssues.map((issue) => (
-                  <tr key={issue.id} className="hover:bg-slate-50/70 transition-colors">
+          {/* Filter Dropdowns */}
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            {/* Visibility filter (in all tab) */}
+            {activeSubTab === 'all' && (
+              <select
+                value={visibilityFilter}
+                onChange={(e) => setVisibilityFilter(e.target.value)}
+                className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-[13px] text-slate-700 outline-none"
+              >
+                <option value="all">All Visibility</option>
+                <option value="public">Public Issues Only</option>
+                <option value="private">Confidential Only</option>
+              </select>
+            )}
+
+            {/* Category filter */}
+            <select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-[13px] text-slate-700 outline-none"
+            >
+              <option value="all">All Categories</option>
+              <option value="lab">Laboratories</option>
+              <option value="classroom">Classroom AV</option>
+              <option value="facility">Department Facility</option>
+              <option value="academics">KTU Academics</option>
+              <option value="attendance">Attendance Condonation</option>
+              <option value="medical">Medical Review</option>
+              <option value="welfare">Student Welfare</option>
+              <option value="personal">Personal Advisory</option>
+            </select>
+
+            {/* Stage filter */}
+            <select
+              value={stageFilter}
+              onChange={(e) => setStageFilter(e.target.value)}
+              className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-[13px] text-slate-700 outline-none"
+            >
+              <option value="all">All Lifecycle Stages</option>
+              <option value="reported">Reported</option>
+              <option value="acknowledged">Acknowledged</option>
+              <option value="in_progress">In Progress</option>
+              <option value="resolved">Resolved</option>
+              <option value="closed">Closed / Archived</option>
+            </select>
+
+            {/* Urgency filter */}
+            <select
+              value={urgencyFilter}
+              onChange={(e) => setUrgencyFilter(e.target.value)}
+              className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-[13px] text-slate-700 outline-none"
+            >
+              <option value="all">All Urgency</option>
+              <option value="critical">Critical</option>
+              <option value="elevated">Elevated</option>
+              <option value="normal">Normal</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Unified Triage Table */}
+      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+        <div className="p-4 sm:p-5 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-navy-900 text-[15px]">
+              {activeSubTab === 'all'
+                ? 'Consolidated Department Inquiries'
+                : activeSubTab === 'public'
+                ? 'Public Complaint Wall Queue'
+                : 'Confidential Welfare Inquiries'}
+            </span>
+            <span className="text-[12px] font-mono px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+              {filteredItems.length} matching
+            </span>
+          </div>
+
+          <div className="text-[12px] text-slate-500">
+            Click <strong>Update Stage</strong> to mark progress, <strong>Mark to View Public</strong> to publish, or <strong>Close Ticket</strong> to archive.
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[850px] text-left border-collapse">
+            <thead>
+              <tr className="border-b border-slate-200 bg-slate-50 text-slate-500 font-bold uppercase tracking-wider text-[11px]">
+                <th className="p-4">Channel & Case ID</th>
+                <th className="p-4">Title, Topic & Complainant</th>
+                <th className="p-4">Urgency</th>
+                <th className="p-4">Stage / Status</th>
+                <th className="p-4">Engagement</th>
+                <th className="p-4 text-right">Rep Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 text-[13px]">
+              {filteredItems.map((item) => {
+                const isPublic = item.itemType === 'public';
+                const isItemClosed = Boolean(item.isClosed || item.stage === 'closed');
+                const isPublishedGrievance = Boolean(item.isPubliclyViewable || item.publicIssueId);
+
+                return (
+                  <tr key={`${item.itemType}-${item.id}`} className="hover:bg-slate-50/70 transition-colors">
+                    {/* Channel & Case ID */}
                     <td className="p-4 whitespace-nowrap font-mono text-[12px]">
-                      <div className="font-bold text-navy-900">{issue.id.slice(0, 10)}</div>
+                      <div className="flex items-center gap-1.5 mb-1">
+                        {isPublic ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-teal-50 border border-teal-200 text-teal-800 text-[10px] font-bold uppercase tracking-wide">
+                            <Globe className="w-3 h-3 text-teal-600" />
+                            <span>Public</span>
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-navy-900 text-white text-[10px] font-bold uppercase tracking-wide">
+                            <Lock className="w-3 h-3 text-teal-300" />
+                            <span>Confidential</span>
+                          </span>
+                        )}
+
+                        {isPublishedGrievance && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-[10px] font-bold" title="Published to Community Complaint Wall">
+                            <Share2 className="w-2.5 h-2.5 text-emerald-600" />
+                            <span>On Wall</span>
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="font-bold text-navy-900">{item.id.slice(0, 10)}</div>
                       <div className="text-slate-400 text-[11px]">
-                        {new Date(issue.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                        {new Date(item.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
                       </div>
                     </td>
-                    <td className="p-4 max-w-sm">
+
+                    {/* Title, Location/Topic & Complainant */}
+                    <td className="p-4 max-w-md">
                       <div className="font-bold text-navy-900 line-clamp-1 text-[14px]">
-                        {issue.title}
+                        {item.title}
                       </div>
-                      <div className="text-[12px] text-slate-500 line-clamp-1 mt-0.5">
-                        {issue.lab} • {issue.studentName}
+
+                      <div className="flex flex-wrap items-center gap-2 text-[12px] text-slate-500 mt-1">
+                        <span className="font-semibold px-2 py-0.2 rounded bg-slate-100 text-slate-700 uppercase text-[10px]">
+                          {item.category}
+                        </span>
+
+                        <span>•</span>
+                        <span className="truncate max-w-[150px]">{item.locationOrTopic}</span>
+                        <span>•</span>
+
+                        {/* Complainant Identification */}
+                        {item.isAnon ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.2 rounded-full bg-slate-100 border border-slate-200 text-slate-600 text-[11px] font-semibold">
+                            <EyeOff className="w-3 h-3 text-slate-500" />
+                            <span>Anonymous Student</span>
+                          </span>
+                        ) : (
+                          <span className="font-medium text-navy-900">
+                            {item.displayAuthor}{' '}
+                            <code className="font-mono text-[11px] text-slate-500">
+                              ({item.displayRoll})
+                            </code>
+                          </span>
+                        )}
                       </div>
+
+                      {item.resolutionNotes && (
+                        <div className="text-[11px] text-emerald-800 bg-emerald-50 px-2 py-1 rounded-md mt-1.5 line-clamp-1">
+                          <strong className="font-bold">Log: </strong> {item.resolutionNotes}
+                        </div>
+                      )}
                     </td>
+
+                    {/* Urgency */}
                     <td className="p-4 whitespace-nowrap">
                       <span
                         className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
-                          issue.urgency === 'critical'
+                          item.urgency === 'critical'
                             ? 'bg-rose-100 text-rose-800'
-                            : issue.urgency === 'elevated'
+                            : item.urgency === 'elevated'
                             ? 'bg-amber-100 text-amber-800'
                             : 'bg-slate-100 text-slate-600'
                         }`}
                       >
-                        {issue.urgency.toUpperCase()}
+                        {(item.urgency || 'normal').toUpperCase()}
                       </span>
                     </td>
+
+                    {/* Stage / Status */}
                     <td className="p-4 whitespace-nowrap">
-                      <span className="px-2.5 py-0.5 rounded-full bg-slate-100 border border-slate-200 text-slate-700 font-semibold text-[12px] capitalize">
-                        {issue.stage.replace('_', ' ')}
-                      </span>
+                      {isItemClosed ? (
+                        <span className="closed-stamp text-[10px] py-0.5 px-2">
+                          CLOSED
+                        </span>
+                      ) : (
+                        <span className="px-2.5 py-0.5 rounded-full bg-slate-100 border border-slate-200 text-slate-700 font-semibold text-[12px] capitalize">
+                          {item.stage ? item.stage.replace('_', ' ') : (item.status || 'Reported')}
+                        </span>
+                      )}
                     </td>
-                    <td className="p-4 whitespace-nowrap font-mono font-bold text-teal-700 text-[14px]">
-                      +{issue.upvotesCount || 0}
+
+                    {/* Engagement Metric */}
+                    <td className="p-4 whitespace-nowrap font-mono text-[13px]">
+                      {isPublic ? (
+                        <span className="font-bold text-teal-700">
+                          +{item.engagementCount} votes
+                        </span>
+                      ) : (
+                        <span className="text-slate-600">
+                          {item.engagementCount} msgs
+                        </span>
+                      )}
                     </td>
+
+                    {/* Rep Actions */}
                     <td className="p-4 text-right whitespace-nowrap">
-                      <div className="flex items-center justify-end gap-2">
-                        {/* Lab Indent */}
-                        <button
-                          onClick={() => handleGenerateIndent(issue)}
-                          className="px-2.5 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100 text-[12px] font-medium transition-colors"
-                          title="Generate Department Requisition Slip"
-                        >
-                          Lab Indent
-                        </button>
+                      <div className="flex items-center justify-end gap-1.5">
+                        
+                        {/* 1. If Private: Jump to Advisory Chat */}
+                        {!isPublic && (
+                          <button
+                            onClick={() => onSelectVaultToReply(item.id)}
+                            className="px-2.5 py-1.5 rounded-lg bg-slate-100 text-navy-900 hover:bg-slate-200 text-[12px] font-semibold flex items-center gap-1 transition-colors"
+                            title="Open confidential 2-way advisory chat thread"
+                          >
+                            <MessageSquare className="w-3.5 h-3.5" />
+                            <span>Reply</span>
+                          </button>
+                        )}
 
-                        {/* Update Stage */}
-                        <button
-                          onClick={() => handleOpenEdit(issue)}
-                          className="px-3 py-1.5 rounded-lg bg-teal-600 text-white hover:bg-teal-700 text-[12px] font-semibold transition-colors shadow-xs"
-                        >
-                          Update Stage
-                        </button>
+                        {/* 2. If Private: Mark to View Public (Publish to Wall) */}
+                        {!isPublic && !isPublishedGrievance && (
+                          <button
+                            onClick={() => handleOpenPublishModal(item)}
+                            className="px-2.5 py-1.5 rounded-lg bg-teal-50 border border-teal-200 text-teal-800 hover:bg-teal-100 text-[12px] font-semibold flex items-center gap-1 transition-colors"
+                            title="Publish this private grievance onto the Public Community Wall so students can track it"
+                          >
+                            <Share2 className="w-3.5 h-3.5 text-teal-600" />
+                            <span>View Public</span>
+                          </button>
+                        )}
 
-                        {/* Close Issue Stamp Action */}
-                        <button
-                          onClick={() => handleOpenCloseModal(issue)}
-                          className="px-3 py-1.5 rounded-lg border-2 border-red-600 text-red-600 hover:bg-red-50 text-[12px] font-extrabold uppercase tracking-wide transition-colors"
-                          title="Officially close issue and move to Resolved Archive"
-                        >
-                          Close Issue
-                        </button>
+                        {/* 3. If Public: Lab Indent Generator */}
+                        {isPublic && (
+                          <button
+                            onClick={() => handleGenerateIndent(item)}
+                            className="px-2 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100 text-[12px] font-medium transition-colors"
+                            title="Generate Department Requisition Slip"
+                          >
+                            Indent
+                          </button>
+                        )}
+
+                        {/* 4. Update Lifecycle Stage (Available for all) */}
+                        {!isItemClosed && (
+                          <button
+                            onClick={() => handleOpenEdit(item)}
+                            className="px-3 py-1.5 rounded-lg bg-teal-600 text-white hover:bg-teal-700 text-[12px] font-semibold transition-colors shadow-xs"
+                            title="Advance milestone stage (Reported, Acknowledged, In Progress, Resolved)"
+                          >
+                            Update Stage
+                          </button>
+                        )}
+
+                        {/* 5. Close Ticket Action (Available for all non-closed) */}
+                        {!isItemClosed && (
+                          <button
+                            onClick={() => handleOpenCloseModal(item)}
+                            className="px-3 py-1.5 rounded-lg border-2 border-red-600 text-red-600 hover:bg-red-50 text-[12px] font-extrabold uppercase tracking-wide transition-colors"
+                            title="Formally issue official CLOSED stamp and transfer to archive"
+                          >
+                            Close Ticket
+                          </button>
+                        )}
+
+                        {/* If already closed, indicate certified status */}
+                        {isItemClosed && (
+                          <span className="text-[12px] font-semibold text-slate-400 italic">
+                            Archived
+                          </span>
+                        )}
                       </div>
                     </td>
                   </tr>
-                ))}
+                );
+              })}
 
-                {filteredIssues.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="p-8 text-center text-slate-400 text-[14px]">
-                      No active issues match the selected filter.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+              {filteredItems.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="p-12 text-center text-slate-400 text-[14px]">
+                    No inquiries match the current search filters.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
-      ) : (
-        /* SUBTAB 2: Confidential Student Requests */
-        <div className="space-y-4">
-          <div className="bg-white border border-slate-200 rounded-2xl p-5">
-            <h3 className="text-[16px] font-bold text-navy-900 mb-1">
-              Confidential Student Welfare Responses
-            </h3>
-            <p className="text-[14px] text-slate-600 font-normal">
-              Directly review student welfare, medical leave condonation, and internal marks inquiries. You can reply straight into their secure 2-way thread.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {vaults.map((vault) => (
-              <div
-                key={vault.id}
-                className="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col justify-between shadow-xs hover:border-slate-300 transition-all"
-              >
-                <div>
-                  <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-navy-900 text-white uppercase">
-                      {vault.category}
-                    </span>
-                    <div className="flex items-center gap-1.5 text-[12px]">
-                      <span className="font-bold text-navy-900">
-                        {vault.authorName || vault.subjectRoll}
-                      </span>
-                      <span className="font-mono text-slate-500 font-semibold">
-                        ({vault.subjectRoll})
-                      </span>
-                      {vault.semester && (
-                        <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-teal-50 text-teal-800 border border-teal-200">
-                          {vault.semester}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  <h4 className="text-[16px] font-bold text-navy-900 mb-1">
-                    {vault.title}
-                  </h4>
-
-                  <div className="text-[12px] text-slate-500 font-mono mb-2">
-                    Student: {vault.authorEmail}
-                  </div>
-
-                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-[13px] text-slate-600 mb-4 line-clamp-3 leading-relaxed">
-                    {vault.messagesCount || 1} messages in secure channel
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between pt-3 border-t border-slate-100 text-xs">
-                  <span className="text-slate-400 font-mono text-[11px]">
-                    {new Date(vault.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-                  </span>
-                  <button
-                    onClick={() => onSelectVaultToReply(vault.id)}
-                    className="px-3 py-1.5 rounded-lg bg-navy-900 hover:bg-navy-800 text-white font-semibold text-[13px] flex items-center gap-1.5 transition-colors shadow-xs"
-                  >
-                    <MessageSquare className="w-3.5 h-3.5" />
-                    <span>Open Advisory Thread</span>
-                  </button>
-                </div>
-              </div>
-            ))}
-
-            {vaults.length === 0 && (
-              <div className="col-span-2 p-8 text-center text-[14px] text-slate-400 bg-white border border-dashed border-slate-200 rounded-2xl">
-                No active confidential welfare inquiries pending reply.
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      </div>
 
       {/* MODAL 1: Update Issue Lifecycle Stage */}
-      {isEditingStatus && selectedIssue && (
+      {isEditingStatus && selectedItem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-navy-950/60 backdrop-blur-sm animate-fadeIn">
           <div className="relative w-full max-w-lg bg-white rounded-2xl p-6 sm:p-7 shadow-2xl border border-slate-200 text-left">
+            <div className="flex items-center justify-between mb-2">
+              <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full uppercase ${
+                selectedItem.itemType === 'public' ? 'bg-teal-50 text-teal-800' : 'bg-navy-900 text-white'
+              }`}>
+                {selectedItem.itemType === 'public' ? 'Public Issue' : 'Confidential Grievance'}
+              </span>
+              <button onClick={() => setIsEditingStatus(false)} className="text-slate-400 hover:text-navy-900">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
             <h3 className="text-[20px] font-bold text-navy-900 mb-1">
               Update Issue Lifecycle Stage
             </h3>
-            <p className="text-[13px] text-slate-500 mb-4">
-              {selectedIssue.id} • {selectedIssue.title}
+            <p className="text-[13px] text-slate-500 mb-4 line-clamp-1">
+              {selectedItem.id} • {selectedItem.title}
             </p>
 
             {opError && (
@@ -495,7 +811,7 @@ export default function RepOperationsDesk({
                   required
                   value={resolutionNote}
                   onChange={(e) => setResolutionNote(e.target.value)}
-                  placeholder="e.g. Lab tech replaced faulty BNC probe; verified 1kHz calibration square wave..."
+                  placeholder="Detail maintenance performed, superintendent review, replacement parts, or faculty decision..."
                   className="w-full bg-slate-50 border border-slate-300 focus:bg-white focus:border-teal-600 rounded-xl p-3 text-[14px] text-navy-900 placeholder-slate-400 outline-none resize-none leading-relaxed"
                 />
               </div>
@@ -533,8 +849,8 @@ export default function RepOperationsDesk({
         </div>
       )}
 
-      {/* MODAL 2: Close Issue Stamp Confirmation */}
-      {isClosingIssue && selectedIssue && (
+      {/* MODAL 2: Close Ticket / Stamp Confirmation */}
+      {isClosingIssue && selectedItem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-navy-950/60 backdrop-blur-sm animate-fadeIn">
           <div className="relative w-full max-w-lg bg-white rounded-2xl p-6 sm:p-7 shadow-2xl border border-slate-200 text-left">
             <div className="flex items-center justify-between mb-4">
@@ -547,10 +863,10 @@ export default function RepOperationsDesk({
             </div>
 
             <h3 className="text-[20px] font-bold text-navy-900 mb-1">
-              Confirm Official Issue Closure
+              Confirm Official Ticket Closure
             </h3>
             <p className="text-[14px] text-slate-600 leading-relaxed font-normal mb-4">
-              Closing an issue applies the formal department <strong>CLOSED token</strong> and removes the card from the active Community Complaint Wall. The complaint, resolution details, and discussion will be permanently preserved in the <strong>Resolved Issues Archive</strong>.
+              Closing this ticket certifies completion and permanently archives the record. A formal <strong>CLOSED stamp</strong> will be applied and visible across student portals.
             </p>
 
             {opError && (
@@ -592,6 +908,126 @@ export default function RepOperationsDesk({
                   className="px-5 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-[13px] font-bold uppercase tracking-wider shadow-xs transition-all disabled:opacity-50"
                 >
                   {isOperating ? 'Applying Closure...' : 'Confirm Closure & Archive'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 3: Mark to View Public (Publish Private to Community Wall) */}
+      {isPublishModalOpen && selectedItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-navy-950/60 backdrop-blur-sm animate-fadeIn">
+          <div className="relative w-full max-w-lg bg-white rounded-2xl p-6 sm:p-7 shadow-2xl border border-slate-200 text-left">
+            <div className="flex items-center justify-between mb-3">
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-teal-50 border border-teal-200 text-[12px] font-semibold text-teal-800">
+                <Share2 className="w-3.5 h-3.5" />
+                <span>Mark Status to View Public</span>
+              </div>
+              <button onClick={() => setIsPublishModalOpen(false)} className="text-slate-400 hover:text-navy-900">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <h3 className="text-[20px] font-bold text-navy-900 mb-1">
+              Publish Inquiry to Public Complaint Wall
+            </h3>
+            <p className="text-[13px] text-slate-600 leading-relaxed font-normal mb-4">
+              Publishing allows the entire student community to follow this issue and indicate "+1 Affects Me" on the Community Wall.
+            </p>
+
+            {selectedItem.isAnon && (
+              <div className="p-3 mb-4 rounded-xl bg-slate-100 border border-slate-300 text-[12px] text-slate-700 flex items-center gap-2">
+                <EyeOff className="w-4 h-4 text-navy-900 shrink-0" />
+                <span>
+                  <strong>Student Anonymity Preserved:</strong> The original student submitted anonymously. On the public wall, the author will strictly display as <code>ECE Student (Anonymous)</code>.
+                </span>
+              </div>
+            )}
+
+            {opError && (
+              <div className="p-3 mb-3 rounded-xl bg-rose-50 border border-rose-200 text-[13px] text-rose-800">
+                {opError}
+              </div>
+            )}
+
+            <form onSubmit={handleConfirmPublish} className="space-y-4">
+              <div>
+                <label className="block text-[13px] font-bold text-navy-900 uppercase tracking-wide mb-1.5">
+                  Public Headline / Title *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={publishTitle}
+                  onChange={(e) => setPublishTitle(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 focus:bg-white focus:border-teal-600 rounded-xl px-4 py-2.5 text-[14px] text-navy-900 outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[13px] font-bold text-navy-900 uppercase tracking-wide mb-1.5">
+                    Category *
+                  </label>
+                  <select
+                    value={publishCategory}
+                    onChange={(e) => setPublishCategory(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 focus:bg-white focus:border-teal-600 rounded-xl px-3 py-2 text-[14px] text-navy-900 outline-none"
+                  >
+                    <option value="facility">Department Facility</option>
+                    <option value="lab">Laboratory Equipment</option>
+                    <option value="classroom">Classroom AV</option>
+                    <option value="academics">KTU Academics</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[13px] font-bold text-navy-900 uppercase tracking-wide mb-1.5">
+                    Room / Facility Location *
+                  </label>
+                  <select
+                    value={publishLab}
+                    onChange={(e) => setPublishLab(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 focus:bg-white focus:border-teal-600 rounded-xl px-3 py-2 text-[14px] text-navy-900 outline-none"
+                  >
+                    {LAB_FACILITIES.map((facility) => (
+                      <option key={facility.id} value={facility.name}>
+                        {facility.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[13px] font-bold text-navy-900 uppercase tracking-wide mb-1.5">
+                  Public Problem Description *
+                </label>
+                <textarea
+                  rows={3}
+                  required
+                  value={publishDescription}
+                  onChange={(e) => setPublishDescription(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 focus:bg-white focus:border-teal-600 rounded-xl p-3 text-[14px] text-navy-900 outline-none resize-none leading-relaxed"
+                />
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsPublishModalOpen(false)}
+                  className="px-4 py-2 rounded-xl text-[13px] text-slate-600 hover:text-navy-900 border border-slate-200 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isOperating}
+                  className="px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-[13px] font-bold flex items-center gap-2 shadow-xs transition-all disabled:opacity-50"
+                >
+                  <Share2 className="w-4 h-4" />
+                  <span>{isOperating ? 'Publishing...' : 'Publish to Community Wall'}</span>
                 </button>
               </div>
             </form>

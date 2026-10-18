@@ -49,6 +49,7 @@ export default function NewIssueModal({
 
   // Private Specific Fields
   const [privateCategory, setPrivateCategory] = useState('attendance');
+  const [hidePrivateIdentity, setHidePrivateIdentity] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState(null);
 
@@ -64,6 +65,7 @@ export default function NewIssueModal({
     setLabId(LAB_FACILITIES[0]?.name || 'EC 1st Year Class');
     setHidePublicIdentity(true);
     setPrivateCategory('attendance');
+    setHidePrivateIdentity(false);
     setFormError(null);
   };
 
@@ -120,7 +122,7 @@ export default function NewIssueModal({
           initialMessage: description.trim(),
           category: privateCategory,
           urgency,
-          isAnonymous: false
+          isAnonymous: hidePrivateIdentity
         });
       }
       handleClose();
@@ -453,36 +455,76 @@ export default function NewIssueModal({
                   />
                 </div>
               ) : (
-                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5">
-                  <div className="flex items-center gap-2 text-navy-900 font-semibold text-[13px]">
-                    <UserCheck className="w-4 h-4 text-teal-600 shrink-0" />
-                    <span>Verified Complainant Identification:</span>
-                  </div>
-                  <div className="p-3 rounded-xl bg-white border border-slate-200 text-[13px] text-slate-700 flex flex-wrap items-center gap-x-4 gap-y-1.5 shadow-2xs">
-                    <span>
-                      <strong className="text-navy-900">Student:</strong> {currentUser?.displayName || currentUser?.rollNumber}
-                    </span>
-                    <span>
-                      <strong className="text-navy-900">Roll No:</strong>{' '}
-                      <code className="font-mono font-bold text-navy-900 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
-                        {currentUser?.rollNumber}
-                      </code>
-                    </span>
-                    {currentUser?.semester && (
-                      <span>
-                        <strong className="text-navy-900">Batch:</strong>{' '}
-                        <span className="font-semibold text-teal-800 bg-teal-50 px-1.5 py-0.5 rounded border border-teal-200 text-[12px]">
-                          {currentUser?.semester}
+                <div className="space-y-3">
+                  {/* Anonymous Toggle for Private Grievance */}
+                  <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      {hidePrivateIdentity ? (
+                        <EyeOff className="w-4 h-4 text-navy-900 shrink-0" />
+                      ) : (
+                        <UserCheck className="w-4 h-4 text-teal-600 shrink-0" />
+                      )}
+                      <div>
+                        <span className="text-[14px] font-semibold text-navy-900 block">
+                          Submit Anonymously to Representative
                         </span>
-                      </span>
-                    )}
-                    <span>
-                      <strong className="text-navy-900">Email:</strong> {currentUser?.email}
-                    </span>
+                        <span className="text-[12px] text-slate-500 block">
+                          Mask your name, KTU roll number, and email from the representative triage desk
+                        </span>
+                      </div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={hidePrivateIdentity}
+                      onChange={(e) => setHidePrivateIdentity(e.target.checked)}
+                      className="w-4 h-4 text-navy-900 rounded cursor-pointer shrink-0 ml-3"
+                    />
                   </div>
-                  <p className="text-[12px] text-slate-500 leading-normal">
-                    This inquiry is confidential and not published on the Community Wall. Your verified student identity is directly shared with the Department Representative so they can inspect official records and address your concern.
-                  </p>
+
+                  {hidePrivateIdentity ? (
+                    <div className="p-3.5 rounded-xl bg-slate-100 border border-slate-300 text-[13px] text-slate-700 flex items-center gap-2.5">
+                      <EyeOff className="w-4 h-4 text-navy-900 shrink-0" />
+                      <div className="leading-relaxed">
+                        <strong className="text-navy-900 font-semibold">Identity Masked:</strong> You will appear as{' '}
+                        <code className="font-mono bg-white px-1.5 py-0.5 rounded border border-slate-200 font-bold text-navy-900">
+                          Anonymous Student
+                        </code>{' '}
+                        to the department representative. You can still chat privately in this vault and receive direct guidance.
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5">
+                      <div className="flex items-center gap-2 text-navy-900 font-semibold text-[13px]">
+                        <UserCheck className="w-4 h-4 text-teal-600 shrink-0" />
+                        <span>Verified Complainant Identification:</span>
+                      </div>
+                      <div className="p-3 rounded-xl bg-white border border-slate-200 text-[13px] text-slate-700 flex flex-wrap items-center gap-x-4 gap-y-1.5 shadow-2xs">
+                        <span>
+                          <strong className="text-navy-900">Student:</strong> {currentUser?.displayName || currentUser?.rollNumber}
+                        </span>
+                        <span>
+                          <strong className="text-navy-900">Roll No:</strong>{' '}
+                          <code className="font-mono font-bold text-navy-900 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                            {currentUser?.rollNumber}
+                          </code>
+                        </span>
+                        {currentUser?.semester && (
+                          <span>
+                            <strong className="text-navy-900">Batch:</strong>{' '}
+                            <span className="font-semibold text-teal-800 bg-teal-50 px-1.5 py-0.5 rounded border border-teal-200 text-[12px]">
+                              {currentUser?.semester}
+                            </span>
+                          </span>
+                        )}
+                        <span>
+                          <strong className="text-navy-900">Email:</strong> {currentUser?.email}
+                        </span>
+                      </div>
+                      <p className="text-[12px] text-slate-500 leading-normal">
+                        This inquiry is confidential and not published on the Community Wall. Your verified student identity is directly shared with the Department Representative so they can inspect official records.
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 

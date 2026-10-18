@@ -199,9 +199,16 @@ export default function ConfidentialVault({
                         <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 uppercase">
                           {g.category}
                         </span>
-                        <span className="text-[12px] font-semibold text-slate-700 truncate max-w-[160px]">
-                          {g.authorName || g.subjectRoll}
-                        </span>
+                        {g.isAnonymous ? (
+                          <span className="text-[11px] font-semibold text-slate-600 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full flex items-center gap-1">
+                            <EyeOff className="w-3 h-3 text-slate-500" />
+                            <span>Anonymous</span>
+                          </span>
+                        ) : (
+                          <span className="text-[12px] font-semibold text-slate-700 truncate max-w-[160px]">
+                            {g.authorName || g.subjectRoll}
+                          </span>
+                        )}
                       </div>
 
                       <div className="font-bold text-navy-900 text-[14px] line-clamp-1 mb-1">
@@ -209,7 +216,9 @@ export default function ConfidentialVault({
                       </div>
 
                       <div className="flex items-center justify-between text-[12px] text-slate-500">
-                        <span className="font-mono font-medium">{g.subjectRoll}</span>
+                        <span className="font-mono font-medium">
+                          {g.isAnonymous ? (isRep ? 'ANONYMOUS' : `${g.subjectRoll} (Masked)`) : g.subjectRoll}
+                        </span>
                         <span>{new Date(g.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
                       </div>
                     </button>
@@ -256,20 +265,32 @@ export default function ConfidentialVault({
                     <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-navy-900 text-white">
                       CONFIDENTIAL
                     </span>
+                    {activeGrievance.isAnonymous && (
+                      <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-200 text-slate-800 flex items-center gap-1">
+                        <EyeOff className="w-3 h-3 text-slate-600" />
+                        <span>ANONYMOUS</span>
+                      </span>
+                    )}
                     <span className="text-slate-300">•</span>
                     <span className="text-[13px] font-bold text-navy-900">
-                      {activeGrievance.authorName || activeGrievance.subjectRoll || 'Student'}
+                      {activeGrievance.isAnonymous
+                        ? (isRep ? 'Anonymous Student' : `${currentUser.displayName || currentUser.rollNumber} (Masked to Rep)`)
+                        : (activeGrievance.authorName || activeGrievance.subjectRoll || 'Student')}
                     </span>
                     <span className="font-mono text-[12px] text-navy-900 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 font-bold">
-                      {activeGrievance.subjectRoll}
+                      {activeGrievance.isAnonymous
+                        ? (isRep ? 'CONFIDENTIAL' : `${currentUser.rollNumber}`)
+                        : activeGrievance.subjectRoll}
                     </span>
-                    {activeGrievance.semester && (
+                    {!activeGrievance.isAnonymous && activeGrievance.semester && (
                       <span className="text-[11px] font-bold text-teal-800 bg-teal-50 border border-teal-200 px-1.5 py-0.5 rounded">
                         {activeGrievance.semester}
                       </span>
                     )}
                     <span className="text-[12px] text-slate-500 font-mono">
-                      ({activeGrievance.authorEmail})
+                      {activeGrievance.isAnonymous
+                        ? (isRep ? '[Identity Protected]' : `(${activeGrievance.authorEmail})`)
+                        : `(${activeGrievance.authorEmail})`}
                     </span>
                   </div>
                   <h3 className="text-[18px] sm:text-[19px] font-bold text-navy-900 tracking-tight">
@@ -278,11 +299,27 @@ export default function ConfidentialVault({
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <span className="px-2.5 py-1 rounded-full bg-slate-200 text-slate-700 font-semibold text-[12px]">
-                    Status: {activeGrievance.status || 'Active'}
-                  </span>
+                  {activeGrievance.isClosed ? (
+                    <span className="closed-stamp text-[11px] py-0.5 px-2.5">
+                      CLOSED
+                    </span>
+                  ) : (
+                    <span className="px-2.5 py-1 rounded-full bg-slate-200 text-slate-700 font-semibold text-[12px] capitalize">
+                      Status: {activeGrievance.stage ? activeGrievance.stage.replace('_', ' ') : (activeGrievance.status || 'Active')}
+                    </span>
+                  )}
                 </div>
               </div>
+
+              {activeGrievance.resolutionNotes && (
+                <div className="px-4 py-2.5 bg-emerald-50 border-b border-emerald-200 text-[13px] text-emerald-950 flex items-start gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-bold">Official Resolution Note: </span>
+                    <span>{activeGrievance.resolutionNotes}</span>
+                  </div>
+                </div>
+              )}
 
               {/* Chat Messages */}
               <div className="flex-1 p-4 sm:p-6 overflow-y-auto space-y-4 bg-slate-50/50">

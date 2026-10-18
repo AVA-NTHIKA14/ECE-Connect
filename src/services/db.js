@@ -166,6 +166,63 @@ export function subscribeArchivedIssues(onData, onError) {
 }
 
 /**
+ * Subscribe to all public issues (both active and closed) for representative triage.
+ */
+export function subscribeAllPublicIssues(onData, onError) {
+  if (!isFirebaseConfigured || !db) {
+    const load = () => {
+      const all = getLocal(STORAGE_PUBLIC_ISSUES, []);
+      onData(all.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)));
+    };
+    load();
+    const interval = setInterval(load, 2000);
+    return () => clearInterval(interval);
+  }
+
+  try {
+    const q = query(collection(db, 'public_issues'));
+
+    return onSnapshot(
+      q,
+      (snapshot) => {
+        const issues = snapshot.docs
+          .map((d) => ({
+            id: d.id,
+            ...d.data()
+          }))
+          .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+
+        // Sync local cache
+        try {
+          const currentLocal = getLocal(STORAGE_PUBLIC_ISSUES, []);
+          const merged = [...issues];
+          currentLocal.forEach((item) => {
+            if (!merged.find((m) => m.id === item.id)) {
+              merged.push(item);
+            }
+          });
+          setLocal(STORAGE_PUBLIC_ISSUES, merged);
+        } catch (_) {}
+
+        onData(issues);
+      },
+      (error) => {
+        console.warn('Error listening to all public issues in Firestore, using cache fallback:', error);
+        const all = getLocal(STORAGE_PUBLIC_ISSUES, []);
+        onData(all.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)));
+        if (onError) onError(error);
+      }
+    );
+  } catch (err) {
+    console.warn('Firestore subscription error for all issues, using cache fallback:', err);
+    const all = getLocal(STORAGE_PUBLIC_ISSUES, []);
+    onData(all.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)));
+    if (onError) onError(err);
+    return () => {};
+  }
+}
+
+/**
  * Create a new public department issue.
  */
 export async function createPublicIssue(data, currentUser) {
@@ -603,20 +660,24 @@ export async function createPrivateGrievance(data, currentUser) {
   if (!currentUser) throw new Error('Please sign in to submit a confidential grievance.');
 
   const now = new Date().toISOString();
-  const studentName = currentUser.displayName || currentUser.rollNumber || 'Student';
+  const isAnonymous = Boolean(data.isAnonymous);
+  const studentName = isAnonymous ? 'Anonymous Student' : (currentUser.displayName || currentUser.rollNumber || 'Student');
+  const subjectRoll = isAnonymous ? 'CONFIDENTIAL' : (currentUser.rollNumber || 'STUDENT');
+
   const grievancePayload = {
     title: data.title.trim(),
     category: data.category || 'welfare',
     urgency: data.urgency || 'normal',
-    isAnonymous: false,
+    isAnonymous,
     status: 'active',
     stage: 'reported',
     isClosed: false,
     authorUid: currentUser.uid,
-    authorEmail: currentUser.email,
+    authorEmail: isAnonymous ? 'anonymous@confidential.gecskp' : currentUser.email,
+    realAuthorEmail: currentUser.email,
     authorName: studentName,
-    subjectRoll: currentUser.rollNumber || 'STUDENT',
-    semester: currentUser.semester || null,
+    subjectRoll: subjectRoll,
+    semester: isAnonymous ? null : (currentUser.semester || null),
     createdAt: now,
     updatedAt: now,
     assignedRep: 'ece.rep@gecskp.ac.in',
@@ -625,8 +686,10 @@ export async function createPrivateGrievance(data, currentUser) {
     statusHistory: [
       {
         stage: 'reported',
-        note: `Confidential grievance submitted by ${studentName} (${currentUser.rollNumber || ''}).`,
-        updatedBy: currentUser.rollNumber || currentUser.email,
+        note: isAnonymous
+          ? 'Confidential grievance submitted anonymously.'
+          : `Confidential grievance submitted by ${studentName} (${currentUser.rollNumber || ''}).`,
+        updatedBy: isAnonymous ? 'Anonymous Student' : (currentUser.rollNumber || currentUser.email),
         updatedAt: now
       }
     ]
@@ -635,7 +698,7 @@ export async function createPrivateGrievance(data, currentUser) {
   const initialMessage = {
     senderUid: currentUser.uid,
     senderRole: 'student',
-    senderLabel: `${studentName} (${currentUser.rollNumber || 'Student'})`,
+    senderLabel: isAnonymous ? 'Anonymous Student (Vault Owner)' : `${studentName} (${currentUser.rollNumber || 'Student'})`,
     content: data.initialMessage.trim(),
     attachments: data.attachments || [],
     createdAt: now
@@ -718,10 +781,19 @@ export async function sendGrievanceMessage(grievanceId, content, currentUser, at
   const isRep = currentUser.role === 'representative';
   const now = new Date().toISOString();
 
+  // Check if grievance is anonymous
+  const localGrievances = getLocal(STORAGE_PRIVATE_GRIEVANCES, []);
+  const currentG = localGrievances.find((g) => g.id === grievanceId);
+  const isAnonGrievance = currentG?.isAnonymous === true;
+
+  const senderLabel = isRep
+    ? 'ECE Association Representative'
+    : (isAnonGrievance ? 'Anonymous Student (Vault Owner)' : `${currentUser.displayName || currentUser.rollNumber} (Student)`);
+
   const msgPayload = {
     senderUid: currentUser.uid,
     senderRole: isRep ? 'rep' : 'student',
-    senderLabel: isRep ? 'ECE Association Representative' : 'Student (Vault Owner)',
+    senderLabel,
     content: content.trim(),
     attachments: attachments || [],
     createdAt: now
@@ -758,5 +830,221 @@ export async function sendGrievanceMessage(grievanceId, content, currentUser, at
     }
   } catch (err) {
     console.warn('Firestore message save failed, retained in local session:', err);
+  }
+}
+
+/**
+ * Update private grievance lifecycle stage (Reported -> Acknowledged -> In Progress -> Resolved).
+ */
+export async function updatePrivateGrievanceStage(grievanceId, newStage, note, targetFixDate, currentUser) {
+  if (!currentUser || currentUser.role !== 'representative') {
+    throw new Error('Unauthorized. Only verified representatives can update grievance stages.');
+  }
+
+  const now = new Date().toISOString();
+  const historyEntry = {
+    stage: newStage,
+    note: note?.trim() || `Status updated to ${newStage.replace('_', ' ')}.`,
+    updatedBy: currentUser.email,
+    updatedAt: now
+  };
+
+  if (!isFirebaseConfigured || !db) {
+    const all = getLocal(STORAGE_PRIVATE_GRIEVANCES, []);
+    const updated = all.map((g) => {
+      if (g.id === grievanceId) {
+        return {
+          ...g,
+          stage: newStage,
+          status: newStage,
+          resolutionNotes: note?.trim() || g.resolutionNotes,
+          targetFixDate: targetFixDate || g.targetFixDate,
+          updatedAt: now,
+          statusHistory: [...(g.statusHistory || []), historyEntry]
+        };
+      }
+      return g;
+    });
+    setLocal(STORAGE_PRIVATE_GRIEVANCES, updated);
+    return;
+  }
+
+  const gDocRef = doc(db, 'private_grievances', grievanceId);
+  const snap = await getDoc(gDocRef);
+  if (!snap.exists()) throw new Error('Grievance does not exist.');
+
+  const existingHistory = snap.data().statusHistory || [];
+  await updateDoc(gDocRef, {
+    stage: newStage,
+    status: newStage,
+    resolutionNotes: note?.trim() || snap.data().resolutionNotes || '',
+    targetFixDate: targetFixDate || snap.data().targetFixDate || null,
+    updatedAt: now,
+    statusHistory: [...existingHistory, historyEntry]
+  });
+}
+
+/**
+ * Close a private grievance with official CLOSED token stamp.
+ */
+export async function closePrivateGrievanceWithToken(grievanceId, resolutionNotes, currentUser) {
+  if (!currentUser || currentUser.role !== 'representative') {
+    throw new Error('Unauthorized. Only verified representatives can close grievances.');
+  }
+
+  if (!resolutionNotes || !resolutionNotes.trim()) {
+    throw new Error('Resolution log notes are mandatory before a ticket can be closed.');
+  }
+
+  const now = new Date().toISOString();
+  const historyEntry = {
+    stage: 'closed',
+    note: `[OFFICIALLY CLOSED] ${resolutionNotes.trim()}`,
+    updatedBy: currentUser.email,
+    updatedAt: now
+  };
+
+  if (!isFirebaseConfigured || !db) {
+    const all = getLocal(STORAGE_PRIVATE_GRIEVANCES, []);
+    const updated = all.map((g) => {
+      if (g.id === grievanceId) {
+        return {
+          ...g,
+          stage: 'closed',
+          status: 'closed',
+          isClosed: true,
+          closedAt: now,
+          closedBy: currentUser.email,
+          resolutionNotes: resolutionNotes.trim(),
+          updatedAt: now,
+          statusHistory: [...(g.statusHistory || []), historyEntry]
+        };
+      }
+      return g;
+    });
+    setLocal(STORAGE_PRIVATE_GRIEVANCES, updated);
+    return;
+  }
+
+  const gDocRef = doc(db, 'private_grievances', grievanceId);
+  const snap = await getDoc(gDocRef);
+  if (!snap.exists()) throw new Error('Grievance not found.');
+
+  const existingHistory = snap.data().statusHistory || [];
+  await updateDoc(gDocRef, {
+    stage: 'closed',
+    status: 'closed',
+    isClosed: true,
+    closedAt: now,
+    closedBy: currentUser.email,
+    resolutionNotes: resolutionNotes.trim(),
+    updatedAt: now,
+    statusHistory: [...existingHistory, historyEntry]
+  });
+}
+
+/**
+ * Publish / Mark a private grievance to "View Public" (create a public community wall issue).
+ * Strictly preserves student anonymity if isAnonymous is true.
+ */
+export async function publishPrivateGrievanceToPublic(grievanceId, publishData, currentUser) {
+  if (!currentUser || currentUser.role !== 'representative') {
+    throw new Error('Unauthorized. Only verified representatives can publish inquiries to the Community Wall.');
+  }
+
+  const now = new Date().toISOString();
+
+  // Retrieve source grievance
+  let sourceGrievance = null;
+  const allPrivate = getLocal(STORAGE_PRIVATE_GRIEVANCES, []);
+  sourceGrievance = allPrivate.find((g) => g.id === grievanceId);
+
+  if (isFirebaseConfigured && db) {
+    try {
+      const snap = await getDoc(doc(db, 'private_grievances', grievanceId));
+      if (snap.exists()) {
+        sourceGrievance = { id: snap.id, ...snap.data() };
+      }
+    } catch (_) {}
+  }
+
+  if (!sourceGrievance) throw new Error('Private grievance not found.');
+
+  const isAnon = Boolean(sourceGrievance.isAnonymous || publishData.forceAnonymous);
+  const studentName = isAnon ? 'ECE Student (Anonymous)' : (sourceGrievance.authorName || 'ECE Student');
+
+  const publicPayload = {
+    title: (publishData.title || sourceGrievance.title).trim(),
+    description: (publishData.description || sourceGrievance.title).trim(),
+    category: publishData.category || (sourceGrievance.category === 'academics' ? 'academics' : 'facility'),
+    lab: publishData.lab || 'ECE Department Facility',
+    equipmentCode: 'GENERAL-ASSET',
+    urgency: sourceGrievance.urgency || 'normal',
+    stage: sourceGrievance.stage || 'in_progress',
+    isClosed: Boolean(sourceGrievance.isClosed),
+    upvotesCount: 1,
+    commentsCount: 0,
+    authorUid: sourceGrievance.authorUid || currentUser.uid,
+    authorEmail: isAnon ? 'anonymous@confidential.gecskp' : (sourceGrievance.authorEmail || currentUser.email),
+    studentName,
+    originGrievanceId: grievanceId,
+    createdAt: now,
+    updatedAt: now,
+    assignedRep: 'ece.rep@gecskp.ac.in',
+    resolutionNotes: sourceGrievance.resolutionNotes || null,
+    targetFixDate: sourceGrievance.targetFixDate || null,
+    statusHistory: [
+      {
+        stage: sourceGrievance.stage || 'in_progress',
+        note: `Transferred to Public Community Wall by Department Representative for transparent resolution.`,
+        updatedBy: currentUser.email,
+        updatedAt: now
+      }
+    ]
+  };
+
+  // Add to public issues in local storage
+  const localPubId = `PUB-${Date.now().toString(36).toUpperCase()}`;
+  const localPubIssue = { id: localPubId, ...publicPayload };
+  const allPub = getLocal(STORAGE_PUBLIC_ISSUES, []);
+  setLocal(STORAGE_PUBLIC_ISSUES, [localPubIssue, ...allPub]);
+
+  // Update source grievance in local storage
+  const auditNote = {
+    stage: sourceGrievance.stage || 'in_progress',
+    note: `Published to Public Community Wall by ECE Representative.`,
+    updatedBy: currentUser.email,
+    updatedAt: now
+  };
+  const updatedPrivate = allPrivate.map((g) => {
+    if (g.id === grievanceId) {
+      return {
+        ...g,
+        isPubliclyViewable: true,
+        publicIssueId: localPubId,
+        updatedAt: now,
+        statusHistory: [...(g.statusHistory || []), auditNote]
+      };
+    }
+    return g;
+  });
+  setLocal(STORAGE_PRIVATE_GRIEVANCES, updatedPrivate);
+
+  if (!isFirebaseConfigured || !db) {
+    return localPubIssue;
+  }
+
+  try {
+    const pubDocRef = await addDoc(collection(db, 'public_issues'), publicPayload);
+    await updateDoc(doc(db, 'private_grievances', grievanceId), {
+      isPubliclyViewable: true,
+      publicIssueId: pubDocRef.id,
+      updatedAt: now,
+      statusHistory: [...(sourceGrievance.statusHistory || []), auditNote]
+    });
+    return { id: pubDocRef.id, ...publicPayload };
+  } catch (err) {
+    console.warn('Firestore publish error, retained in local cache:', err);
+    return localPubIssue;
   }
 }

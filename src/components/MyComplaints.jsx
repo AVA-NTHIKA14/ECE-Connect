@@ -8,7 +8,8 @@ import {
   ChevronRight,
   Plus,
   LogIn,
-  Inbox
+  Inbox,
+  EyeOff
 } from 'lucide-react';
 
 export default function MyComplaints({
@@ -181,6 +182,13 @@ export default function MyComplaints({
                       <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-navy-50 text-navy-900 border border-navy-200 flex items-center gap-1">
                         <Lock className="w-3 h-3" />
                         Confidential Grievance
+                      </span>
+                    )}
+
+                    {(item.isAnonymous || item.hideIdentity || item.studentName?.includes('Anonymous')) && (
+                      <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 flex items-center gap-1">
+                        <EyeOff className="w-3 h-3 text-slate-500" />
+                        <span>Anonymous</span>
                       </span>
                     )}
 

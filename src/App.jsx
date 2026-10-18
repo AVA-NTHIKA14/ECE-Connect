@@ -12,6 +12,7 @@ import { DEPARTMENT_INFO } from './data/mockData';
 import { onAuthChange, signOutUser } from './services/auth';
 import {
   subscribeActivePublicIssues,
+  subscribeAllPublicIssues,
   subscribeUserGrievances,
   createPublicIssue,
   createPrivateGrievance,
@@ -36,6 +37,7 @@ export default function App() {
   const [issuesError, setIssuesError] = useState(null);
 
   const [vaults, setVaults] = useState([]);
+  const [repIssues, setRepIssues] = useState([]);
 
   // Upvote Tracking dictionary: { [issueId]: boolean }
   const [userVotes, setUserVotes] = useState({});
@@ -98,6 +100,27 @@ export default function App() {
       },
       (err) => {
         console.error('Error loading confidential grievances:', err);
+      }
+    );
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, [currentUser]);
+
+  // 3b. Subscribe to All Public Issues (for Representative Desk)
+  useEffect(() => {
+    if (!currentUser || currentUser.role !== 'representative') {
+      setRepIssues([]);
+      return;
+    }
+
+    const unsubscribe = subscribeAllPublicIssues(
+      (loaded) => {
+        setRepIssues(loaded);
+      },
+      (err) => {
+        console.error('Error loading representative public issues:', err);
       }
     );
 
@@ -286,7 +309,7 @@ export default function App() {
           {/* VIEW 5: Representative Operations Desk (Protected) */}
           {activeTab === 'operations' && currentUser?.role === 'representative' && (
             <RepOperationsDesk
-              issues={issues}
+              issues={repIssues.length > 0 ? repIssues : issues}
               vaults={vaults}
               currentUser={currentUser}
               onSelectVaultToReply={() => setActiveTab('confidential')}
